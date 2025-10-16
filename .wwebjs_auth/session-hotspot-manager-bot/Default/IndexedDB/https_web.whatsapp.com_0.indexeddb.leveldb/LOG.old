@@ -1,0 +1,19 @@
+2025/10/14-20:43:48.544 4384 Reusing MANIFEST C:\Users\medod\Documents\Unnamed-Site-2\Next.js projects\hady-hotspot-dash\.wwebjs_auth\session-hotspot-manager-bot\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2025/10/14-20:43:48.545 4384 Recovering log #1654
+2025/10/14-20:43:48.607 4384 Reusing old log C:\Users\medod\Documents\Unnamed-Site-2\Next.js projects\hady-hotspot-dash\.wwebjs_auth\session-hotspot-manager-bot\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/001654.log 
+2025/10/14-20:43:48.607 4384 Delete type=2 #1650
+2025/10/14-20:43:48.607 4384 Delete type=2 #1651
+2025/10/14-20:43:48.607 4384 Delete type=2 #1652
+2025/10/14-20:43:50.757 447c Level-0 table #1661: started
+2025/10/14-20:43:50.768 447c Level-0 table #1661: 198130 bytes OK
+2025/10/14-20:43:50.771 447c Delete type=0 #1654
+2025/10/14-20:43:50.771 447c Manual compaction at level-0 from '\x00d\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00e\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/10/14-20:43:50.771 447c Manual compaction at level-1 from '\x00d\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00e\x00\x00\x00' @ 0 : 0; will stop at '\x00d\x00\x002\x03\x04' @ 3592154 : 0
+2025/10/14-20:43:50.771 447c Compacting 1@1 + 3@2 files
+2025/10/14-20:43:50.915 447c Generated table #1662@1: 49133 keys, 2210059 bytes
+2025/10/14-20:43:51.103 447c Generated table #1663@1: 58522 keys, 2218035 bytes
+2025/10/14-20:43:51.142 447c Generated table #1664@1: 16300 keys, 331036 bytes
+2025/10/14-20:43:51.142 447c Compacted 1@1 + 3@2 files => 4759130 bytes
+2025/10/14-20:43:51.143 447c compacted to: files[ 0 0 4 0 0 0 0 ]
+2025/10/14-20:43:51.144 447c Delete type=2 #1661
+2025/10/14-20:43:51.144 447c Manual compaction at level-1 from '\x00d\x00\x002\x03\x04' @ 3592154 : 0 .. '\x00e\x00\x00\x00' @ 0 : 0; will stop at (end)
