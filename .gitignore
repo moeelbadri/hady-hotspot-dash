@@ -43,3 +43,5 @@ next-env.d.ts
 # whatsapp
 .wwebj_cache
 .wwebj_auth
+/.wwebjs_cache
+/.wwebjs_auth
