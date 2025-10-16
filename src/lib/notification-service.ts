@@ -50,12 +50,11 @@ async function logNotificationSent(clientPhone: string, username: string, notifi
 }
 
 // Main function to check and send uptime notifications
-export async function checkAndSendUptimeNotifications(activeSessions: any[]): Promise<void> {
+export async function checkAndSendUptimeNotifications(ActiveUsers: any[]): Promise<void> {
   try {
     
     // Get all clients
     const clients = await DatabaseService.getAllClients();
-
     if (!clients || clients.length === 0) {
       return;
     }
@@ -65,11 +64,12 @@ export async function checkAndSendUptimeNotifications(activeSessions: any[]): Pr
     
     // combine all users with active sessions on uptime field
     allUsers.forEach((user: any) => {
-      user.uptime = activeSessions?.find((session: any) => session.user === user.username)?.uptime || '0s' 
-      +
-      user.uptime || user.uptime;
+      const activeUser = ActiveUsers?.find((activeUser: any) => activeUser.user === user.username);
+      if (activeUser) {
+        // Convert uptime to seconds using the utility function
+        user.uptime = parseMikroTikTime(activeUser.uptime || '0s') + parseMikroTikTime(user.uptime || '0s');
+      }
     });
-
 
     let notificationsSent = 0;
 
@@ -81,6 +81,7 @@ export async function checkAndSendUptimeNotifications(activeSessions: any[]): Pr
           user.mac_address && 
           user.mac_address.toLowerCase() === client.mac_address.toLowerCase()
         );
+
 
         if (!mikrotikUser) {
           continue; // No matching MikroTik user found
@@ -98,6 +99,7 @@ export async function checkAndSendUptimeNotifications(activeSessions: any[]): Pr
         // Calculate remaining time
         const remainingSeconds = limitUptimeSeconds - currentUptimeSeconds;
         const remainingMinutes = Math.floor(remainingSeconds / 60);
+
         // Check if user is within 10 minutes of limit
         if (remainingMinutes <= 10 && remainingMinutes > 0) {
           // Check if we already sent notification for this user

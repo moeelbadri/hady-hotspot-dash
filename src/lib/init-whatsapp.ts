@@ -54,6 +54,7 @@ export async function initializeWhatsAppBot() {
 
     if (whatsappBot.isReady) {
       const client = whatsappBot.client;
+      console.log("Initializing WhatsApp Bot Completed... at phase phase-production-server")
       await client.sendMessage('972592790902@c.us', 'Test message from bot');
     } else {
     }
