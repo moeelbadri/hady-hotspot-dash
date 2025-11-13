@@ -172,7 +172,6 @@ export default function TraderDashboard() {
         setPricing(newPricing);
         // Recalculate discounted prices
         await calculateDiscountedPrices(trader.phone, newPricing);
-        alert('Pricing updated successfully!');
       }
     } catch (error) {
       console.error('Error updating pricing:', error);

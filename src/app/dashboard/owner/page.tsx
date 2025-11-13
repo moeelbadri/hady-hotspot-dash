@@ -55,6 +55,7 @@ export default function OwnerDashboard() {
   const [traderPricing, setTraderPricing] = useState<Record<string, any>>({});
   const [transactionFilter, setTransactionFilter] = useState<string>('all');
   const [refreshInterval, setRefreshInterval] = useState<number>(60); // Default 60 seconds
+  const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; trader: TraderWithStats | null }>({ show: false, trader: null });
   
   // React Query hooks for live data
   const { data: reports, isLoading: reportsLoading, error: reportsError } = useOwnerReports(refreshInterval);
@@ -99,13 +100,15 @@ export default function OwnerDashboard() {
     name: '',
     phone: '',
     password: '',
-    hotspotName: '',
     mikrotikId: '',
     mikrotikHost: '',
     mikrotikUsername: '',
     mikrotikPassword: '',
-    mikrotikPort: 8728
+    mikrotikPort: 8728,
+    ethernetPort: ''
   });
+  const [availablePorts, setAvailablePorts] = useState<any[]>([]);
+  const [loadingPorts, setLoadingPorts] = useState(false);
   const [newMikroTik, setNewMikroTik] = useState({
     name: '',
     host: '',
@@ -229,7 +232,7 @@ export default function OwnerDashboard() {
     }
   };
 
-  const handleMikroTikSelection = (mikrotikId: string) => {
+  const handleMikroTikSelection = async (mikrotikId: string) => {
     const selectedMikroTik = mikrotiks.find(m => m.id === mikrotikId);
     if (selectedMikroTik) {
       setNewTrader(prev => ({
@@ -238,8 +241,31 @@ export default function OwnerDashboard() {
         mikrotikHost: selectedMikroTik.host,
         mikrotikUsername: selectedMikroTik.username,
         mikrotikPassword: selectedMikroTik.password,
-        mikrotikPort: selectedMikroTik.port
+        mikrotikPort: selectedMikroTik.port,
+        ethernetPort: '' // Reset ethernet port when MikroTik changes
       }));
+
+      // Fetch available ethernet ports for this MikroTik
+      if (mikrotikId) {
+        setLoadingPorts(true);
+        try {
+          const response = await fetch(`/api/mikrotiks/interfaces/available?mikrotikId=${mikrotikId}`);
+          const result = await response.json();
+          if (result.success) {
+            setAvailablePorts(result.data || []);
+          } else {
+            console.error('Failed to fetch available ports:', result.error);
+            setAvailablePorts([]);
+          }
+        } catch (error) {
+          console.error('Error fetching available ports:', error);
+          setAvailablePorts([]);
+        } finally {
+          setLoadingPorts(false);
+        }
+      } else {
+        setAvailablePorts([]);
+      }
     }
   };
 
@@ -261,13 +287,14 @@ export default function OwnerDashboard() {
           name: '',
           phone: '',
           password: '',
-          hotspotName: '',
           mikrotikId: '',
           mikrotikHost: '',
           mikrotikUsername: '',
           mikrotikPassword: '',
-          mikrotikPort: 8728
+          mikrotikPort: 8728,
+          ethernetPort: ''
         });
+        setAvailablePorts([]);
         
         // Invalidate and refetch all relevant queries immediately
         await Promise.all([
@@ -514,6 +541,34 @@ export default function OwnerDashboard() {
     } catch (error) {
       console.error('Error updating pricing:', error);
       alert('Failed to update pricing. Please try again.');
+    }
+  };
+
+  const deleteTrader = async (traderPhone: string) => {
+    try {
+      const response = await fetch(`/api/traders/${traderPhone}`, {
+        method: 'DELETE',
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        // Invalidate and refetch all relevant queries immediately
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['all-traders'] }),
+          queryClient.invalidateQueries({ queryKey: ['owner-reports'] }),
+          queryClient.invalidateQueries({ queryKey: ['all-users'] }),
+          queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
+        ]);
+        
+        setDeleteConfirm({ show: false, trader: null });
+      } else {
+        console.error('❌ Failed to delete trader:', result.error);
+        alert('Failed to delete trader. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error deleting trader:', error);
+      alert('Failed to delete trader. Please try again.');
     }
   };
 
@@ -807,6 +862,13 @@ export default function OwnerDashboard() {
                             }`}
                           >
                             {trader.isActive ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm({ show: true, trader })}
+                            style={{ cursor: 'pointer' }}
+                            className="text-red-600 hover:text-red-900"
+                          >
+                            Delete
                           </button>
                         </div>
                       </td>
@@ -1342,15 +1404,26 @@ export default function OwnerDashboard() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Phone Number
+                      Phone Number <span className="text-red-500">*</span>
+                      <span className="text-xs text-gray-500 ml-2">(country code e.g. 2224567890)</span>
                     </label>
                     <input
                       type="tel"
                       value={newTrader.phone}
-                      onChange={(e) => setNewTrader(prev => ({ ...prev, phone: e.target.value }))}
+                      onChange={(e) => {
+                        // Allow only digits, +, spaces, and dashes
+                        const value = e.target.value.replace(/[^\d+\s-]/g, '');
+                        setNewTrader(prev => ({ ...prev, phone: value }));
+                      }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 placeholder-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Enter phone number"
+                      placeholder="2224567890"
+                      pattern="^\d{5,15}$"
                     />
+                    {newTrader.phone && !/^\d{5,15}$/.test(newTrader.phone.replace(/[\s-]/g, '')) && (
+                      <p className="mt-1 text-sm text-red-500">
+                        Phone number must include country code (e.g., 2224567890).
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1364,17 +1437,12 @@ export default function OwnerDashboard() {
                       placeholder="Enter trader password"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Hotspot Name
-                    </label>
-                    <input
-                      type="text"
-                      value={newTrader.hotspotName}
-                      onChange={(e) => setNewTrader(prev => ({ ...prev, hotspotName: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 placeholder-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Enter hotspot name"
-                    />
+                  <div className="md:col-span-2">
+                    <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                      <p className="text-sm text-blue-800">
+                        <strong>Note:</strong> Hotspot name will automatically be set to the phone number (without spaces or special characters).
+                      </p>
+                    </div>
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1393,6 +1461,40 @@ export default function OwnerDashboard() {
                       ))}
                     </select>
                   </div>
+                  {newTrader.mikrotikId && (
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Select Ethernet Port
+                        {loadingPorts && (
+                          <span className="ml-2 text-sm text-gray-500">(Loading...)</span>
+                        )}
+                      </label>
+                      <select
+                        value={newTrader.ethernetPort}
+                        onChange={(e) => setNewTrader(prev => ({ ...prev, ethernetPort: e.target.value }))}
+                        disabled={loadingPorts || availablePorts.length === 0}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:bg-gray-100"
+                      >
+                        <option value="">
+                          {loadingPorts 
+                            ? 'Loading available ports...' 
+                            : availablePorts.length === 0 
+                            ? 'No available ports found' 
+                            : 'Choose an ethernet port...'}
+                        </option>
+                        {availablePorts.map((port) => (
+                          <option key={port.id} value={port.name}>
+                            {port.name} {port.defaultName && port.defaultName !== port.name ? `(${port.defaultName})` : ''} {port.macAddress ? `- ${port.macAddress}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {availablePorts.length === 0 && !loadingPorts && newTrader.mikrotikId && (
+                        <p className="mt-1 text-sm text-gray-500">
+                          No available ethernet ports found. All ports may be in use or configured as slaves.
+                        </p>
+                      )}
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       MikroTik Host
@@ -1444,7 +1546,21 @@ export default function OwnerDashboard() {
                 </div>
                 <div className="flex justify-end space-x-3">
                   <button
-                    onClick={() => setShowCreateTrader(false)}
+                    onClick={() => {
+                      setShowCreateTrader(false);
+                      setNewTrader({
+                        name: '',
+                        phone: '',
+                        password: '',
+                        mikrotikId: '',
+                        mikrotikHost: '',
+                        mikrotikUsername: '',
+                        mikrotikPassword: '',
+                        mikrotikPort: 8728,
+                        ethernetPort: ''
+                      });
+                      setAvailablePorts([]);
+                    }}
                     style={{ cursor: 'pointer' }}
                     className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
                   >
@@ -1452,8 +1568,8 @@ export default function OwnerDashboard() {
                   </button>
                   <button
                     onClick={createTrader}
-                    disabled={!newTrader.name || !newTrader.phone || !newTrader.password || !newTrader.hotspotName || !newTrader.mikrotikId}
-                    style={{ cursor: (!newTrader.name || !newTrader.phone || !newTrader.password || !newTrader.hotspotName || !newTrader.mikrotikId) ? 'not-allowed' : 'pointer' }}
+                    disabled={!newTrader.name || !newTrader.phone || !newTrader.password || !newTrader.mikrotikId || !/^(\+?[1-9]\d{9,14}|\d{10,15})$/.test(newTrader.phone.replace(/[\s-]/g, ''))}
+                    style={{ cursor: (!newTrader.name || !newTrader.phone || !newTrader.password || !newTrader.mikrotikId || !/^(\+?[1-9]\d{9,14}|\d{10,15})$/.test(newTrader.phone.replace(/[\s-]/g, ''))) ? 'not-allowed' : 'pointer' }}
                     className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
                   >
                     Create Trader
@@ -1573,6 +1689,34 @@ export default function OwnerDashboard() {
                     Add MikroTik Router
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Confirmation Dialog */}
+        {deleteConfirm.show && deleteConfirm.trader && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Delete Trader</h3>
+              <p className="text-sm text-gray-600 mb-6">
+                Are you sure you want to delete <strong>{deleteConfirm.trader.name}</strong> ({deleteConfirm.trader.phone})? 
+                This action will permanently delete the trader and all associated data including users, sessions, and transactions. 
+                This action cannot be undone.
+              </p>
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setDeleteConfirm({ show: false, trader: null })}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => deleteTrader(deleteConfirm.trader!.phone)}
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700"
+                >
+                  Delete Trader
+                </button>
               </div>
             </div>
           </div>

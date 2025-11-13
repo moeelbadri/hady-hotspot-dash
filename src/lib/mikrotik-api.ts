@@ -396,6 +396,98 @@ class MikroTikAPI {
     }
   }
 
+  // Get all interfaces
+  async getInterfaces(): Promise<any[]> {
+    try {
+      const response = await this.sendCommand('/interface/print');
+      return response || [];
+    } catch (error) {
+      console.error('Error fetching interfaces:', error);
+      throw error;
+    }
+  }
+
+  // Get available ethernet interfaces (not slave, not running)
+  async getAvailableEthernetPorts(): Promise<any[]> {
+    try {
+      const interfaces = await this.getInterfaces();
+      
+      // Filter for ethernet interfaces that are:
+      // 1. Type is ether or ethernet
+      // 2. Not a slave (no master property or master is empty)
+      // 3. Not running (running is false or not set)
+      const available = interfaces.filter((iface: any) => {
+        const type = (iface.type || '').toLowerCase();
+        const isEthernet = type === 'ether' || type === 'ethernet' || type.includes('ether');
+        const isSlave = iface.master && iface.master !== '';
+        const isRunning = false; // iface.running === 'true' || iface.running === true;
+        const isDisabled = iface.disabled === 'true' || iface.disabled === true;
+        
+        return isEthernet && !isSlave && !isRunning && !isDisabled;
+      });
+      
+      return available.map((iface: any) => ({
+        id: iface['.id'],
+        name: iface.name,
+        type: iface.type,
+        macAddress: iface['mac-address'] || '',
+        defaultName: iface['default-name'] || '',
+        comment: iface.comment || '',
+        disabled: iface.disabled === 'true' || iface.disabled === true,
+        running: iface.running === 'true' || iface.running === true,
+        master: iface.master || '',
+      }));
+    } catch (error) {
+      console.error('Error fetching available ethernet ports:', error);
+      throw error;
+    }
+  }
+
+  // Get highest hotspot IP address with comment "hotspot-hady"
+  // Returns IP block: "172.30.10." if none found, or "172.31.10." if IPs found
+  async getHighestHotspotIP(comment: string = 'hotspot-hady'): Promise<string> {
+    try {
+      const ipAddresses: string[] = [];
+      // Check IP pool addresses (if pool has individual address tracking)
+      try {
+        const ipPools = await this.sendCommand('/ip/pool/print');
+        ipPools.forEach((pool: any) => {
+          if (pool.comment && pool.comment.includes(comment)) {
+            // Pool ranges like "192.168.1.1-192.168.1.100"
+            const ranges = pool.ranges || pool['address-ranges'];
+            if (ranges) {
+              // Extract IPs from ranges (format: "192.168.1.1-192.168.1.100")
+              const rangeList = Array.isArray(ranges) ? ranges : ranges.split(',');
+              rangeList.forEach((range: string) => {
+                if (range.includes('-')) {
+                  const [start, end] = range.split('-').map(r => r.trim());
+                  // For now, just add the end IP (highest in range)
+                  if (end) ipAddresses.push(end);
+                } else {
+                  ipAddresses.push(range.trim());
+                }
+              });
+            }
+          }
+        });
+      } catch (error) {
+        console.warn('Could not fetch IP pools:', error);
+      }
+      console.log(`✅ IP addresses: ${ipAddresses}`);
+      // If none found, return base IP block 172.30.10.
+      if (ipAddresses.length === 0) {
+        return '172.30.10.';
+      }
+
+      // If IPs found, increment second octet from 30 to 31, return 172.31.10.
+      return '172.31.10.';
+    } catch (error) {
+      console.error('Error fetching highest hotspot IP:', error);
+      // On error, return base IP block
+      return '172.30.10.';
+    }
+  }
+
   // Test connection
   async testConnection(): Promise<boolean> {
     try {

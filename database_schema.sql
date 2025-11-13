@@ -14,7 +14,8 @@ CREATE TABLE auth_users (
     phone TEXT, -- Only for traders
     is_active BOOLEAN NOT NULL DEFAULT 1,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (phone) REFERENCES traders(phone) ON DELETE CASCADE
 );
 
 -- Traders Table
