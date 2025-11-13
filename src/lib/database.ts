@@ -66,7 +66,8 @@ export class DatabaseService {
     mikrotik_username: string;
     mikrotik_password: string;
     mikrotik_port: number;
-  }) {
+  })
+{
     // First create the MikroTik router
     const mikrotik = await this.createMikroTik({
       name: traderData.hotspot_name + ' Router',
@@ -76,33 +77,6 @@ export class DatabaseService {
       port: traderData.mikrotik_port,
       description: 'Created for trader: ' + traderData.name
     });
-
-    // Create psudo-bridge on the MikroTik device
-    try {
-      const { createMikroTikAPI } = await import('./mikrotik-api');
-      const mikrotikAPI = createMikroTikAPI({
-        id: mikrotik.id,
-        name: mikrotik.name,
-        host: mikrotik.host,
-        port: mikrotik.port,
-        username: mikrotik.username,
-        password: mikrotik.password,
-        description: mikrotik.description,
-        isActive: mikrotik.is_active
-      });
-
-      // Check if psudo-bridge already exists
-      const bridgeExists = await mikrotikAPI.bridgeExists('psudo-bridge');
-      
-      if (!bridgeExists) {
-        await mikrotikAPI.createBridge('psudo-bridge');
-        console.log(`✅ Created psudo-bridge on MikroTik device: ${mikrotik.name}`);
-      } else {
-        console.log(`ℹ️ psudo-bridge already exists on MikroTik device: ${mikrotik.name}`);
-      }
-    } catch (bridgeError) {
-      console.warn('⚠️ Failed to create psudo-bridge, but MikroTik was created:', bridgeError);
-    }
 
     // Then create the trader with reference to the MikroTik
     return await this.createTrader({
