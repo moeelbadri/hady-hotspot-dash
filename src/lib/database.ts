@@ -174,6 +174,13 @@ export class DatabaseService {
     `;
   }
 
+  static async deleteAuthUser(phone: string) {
+    return await db`
+      DELETE FROM auth_users 
+      WHERE phone = ${phone}
+    `;
+  }
+
   // Trader Pricing
   static async setTraderPricing(phone: string, pricing: {
     hour_price: number;

@@ -419,8 +419,9 @@ class MikroTikAPI {
       const available = interfaces.filter((iface: any) => {
         const type = (iface.type || '').toLowerCase();
         const isEthernet = type === 'ether' || type === 'ethernet' || type.includes('ether');
-        const isSlave = iface.master && iface.master !== '';
-        const isRunning = false; // iface.running === 'true' || iface.running === true;
+    
+        const isSlave = iface.slave === 'true' || iface.slave === true;
+        const isRunning = iface.running === 'true' || iface.running === true;
         const isDisabled = iface.disabled === 'true' || iface.disabled === true;
         
         return isEthernet && !isSlave && !isRunning && !isDisabled;
@@ -445,7 +446,7 @@ class MikroTikAPI {
 
   // Get highest hotspot IP address with comment "hotspot-hady"
   // Returns IP block: "172.30.10." if none found, or "172.31.10." if IPs found
-  async getHighestHotspotIP(comment: string = 'hotspot-hady'): Promise<string> {
+  async getHighestHotspotIP(comment: string = 'Trader:'): Promise<string> {
     try {
       const ipAddresses: string[] = [];
       // Check IP pool addresses (if pool has individual address tracking)
@@ -453,21 +454,15 @@ class MikroTikAPI {
         const ipPools = await this.sendCommand('/ip/pool/print');
         ipPools.forEach((pool: any) => {
           if (pool.comment && pool.comment.includes(comment)) {
-            // Pool ranges like "192.168.1.1-192.168.1.100"
-            const ranges = pool.ranges || pool['address-ranges'];
-            if (ranges) {
-              // Extract IPs from ranges (format: "192.168.1.1-192.168.1.100")
-              const rangeList = Array.isArray(ranges) ? ranges : ranges.split(',');
-              rangeList.forEach((range: string) => {
-                if (range.includes('-')) {
-                  const [start, end] = range.split('-').map(r => r.trim());
-                  // For now, just add the end IP (highest in range)
-                  if (end) ipAddresses.push(end);
-                } else {
-                  ipAddresses.push(range.trim());
-                }
-              });
-            }
+            console.log(pool,'pool');
+            const iprange = pool.ranges.split('-')[0];
+            // add 1 to the ip range 172.30.10. to 172.30.11. and return it remove the last octet and add 1
+            const ip = iprange.split('.');
+            console.log(ip);
+            ip[3] = '';
+            ip[2] = (parseInt(ip[2]) + 1).toString();
+            ipAddresses.push(ip.join('.'));
+            return ipAddresses[0];
           }
         });
       } catch (error) {
@@ -480,7 +475,7 @@ class MikroTikAPI {
       }
 
       // If IPs found, increment second octet from 30 to 31, return 172.31.10.
-      return '172.31.10.';
+      return ipAddresses[0];
     } catch (error) {
       console.error('Error fetching highest hotspot IP:', error);
       // On error, return base IP block

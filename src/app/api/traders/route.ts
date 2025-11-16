@@ -68,9 +68,9 @@ export async function POST(request: NextRequest) {
       mikrotikPassword, 
       mikrotikPort = 8728,
       mikrotikId,
-      ethernetPort1
+      ethernetPort
     } = body;
-     const ethernetPort = "vlan60"
+
     if (!name || !phone || !password || !mikrotikHost || !mikrotikUsername || !mikrotikPassword) {
       return NextResponse.json(
         { 
@@ -106,6 +106,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if auth user already exists
+    const existingAuthUser = await DatabaseService.getAuthUser(phone);
+    if (existingAuthUser) {
+      return NextResponse.json(
+        { success: false, error: 'Auth user with this username already exists' },
+        { status: 409 }
+      );
+    }
+
     let trader;
     
     if (mikrotikId) {
@@ -132,22 +141,22 @@ export async function POST(request: NextRequest) {
         console.warn('⚠️ Failed to create auth user, but trader was created:', authError);
       }
 
-    // Create default trader pricing
-    try {
-      await DatabaseService.setTraderPricing(phone, {
-        hour_price: 1.0,    // Default 1.0 for 1 hour
-        day_price: 5.0,     // Default 5.0 for 1 day
-        week_price: 25.0,   // Default 25.0 for 1 week
-        month_price: 80.0,  // Default 80.0 for 1 month
-      });
-    } catch (pricingError) {
-      console.warn('⚠️ Failed to create trader pricing, but trader was created:', pricingError);
-    }
-        // Get all addresses used with comment "hotspot-hady" and return IP block
+        // Create default trader pricing
+        try {
+          await DatabaseService.setTraderPricing(phone, {
+            hour_price: 1.0,    // Default 1.0 for 1 hour
+            day_price: 5.0,     // Default 5.0 for 1 day
+            week_price: 25.0,   // Default 25.0 for 1 week
+            month_price: 80.0,  // Default 80.0 for 1 month
+          });
+        } catch (pricingError) {
+          console.warn('⚠️ Failed to create trader pricing, but trader was created:', pricingError);
+        }
+        // Get all addresses used with comment "Trader:" and return IP block
         // Only check if mikrotikId was provided
         try {
         const mikrotikAPI = await getMikroTikAPI(mikrotikId);
-        const ipBlock = await mikrotikAPI.getHighestHotspotIP('hotspot-hady');
+        const ipBlock = await mikrotikAPI.getHighestHotspotIP('Trader:');
         console.log(`✅ IP block determined: ${ipBlock} for MikroTik ${mikrotikId}`);
 
         // create address pool for the trader
@@ -164,6 +173,8 @@ export async function POST(request: NextRequest) {
           // create address list for the trader
           try {
             const mikrotikClient = await getMikroTikClient(mikrotikId);
+
+            console.log(`✅ Creating address list: ${ipBlock}1/24 for trader ${name} ethernet port: ${ethernetPort}`);
             await mikrotikClient.menu('/ip/address').add({
               address: `${ipBlock}1/24`,
               network: `${ipBlock}0`,
@@ -178,7 +189,49 @@ export async function POST(request: NextRequest) {
                 chain: 'srcnat',
                 src_address: `${ipBlock}1/24`,
                 action: 'masquerade',
+                comment: `Trader: ${name} (${phone})`
               });
+              console.log(`✅ Masquerade nat rule created: ${phone}-masquerade for trader ${name}`);
+              // create hotspost server profile for the trader
+              try {
+                const mikrotikClient = await getMikroTikClient(mikrotikId);
+                await mikrotikClient.menu('/ip/hotspot/profile').add({
+                  name: `${phone}-profile`,
+                  hotspotAddress : ipBlock + '1',
+                  });
+                console.log(`✅ Hotspot server profile created: ${phone}-profile for trader ${name}`);
+              }
+              catch (serverProfileError) {
+                console.warn('⚠️ Failed to create hotspot server profile, but trader was created:', serverProfileError);
+              }
+              // create hotspot server for the trader
+              try {
+                const mikrotikClient = await getMikroTikClient(mikrotikId);
+                await mikrotikClient.menu('/ip/hotspot').add({
+                  name: phone,
+                  addressPool: `${phone}-pool`,
+                  interface: ethernetPort,
+                  disabled: false,
+                  profile: `${phone}-profile`,
+                });
+              //   // create dhcp server for the trader
+              // try {
+              //   const mikrotikClient = await getMikroTikClient(mikrotikId);
+              //   await mikrotikClient.menu('/ip/dhcp-server').add({
+              //     name: `${phone}-dhcp`,
+              //     interface: ethernetPort,
+              //     addressPool: `${phone}-pool`,
+              //     comment: `Trader: ${name} (${phone})`
+              //   });
+              //   console.log(`✅ Dhcp server created: ${phone}-dhcp for trader ${name}`);
+              // }
+              // catch (dhcpServerError) {
+              //       console.warn('⚠️ Failed to create dhcp server, but trader was created:', dhcpServerError);
+              // }
+                  console.log(`✅ Hotspot server created: ${phone} for trader ${name}`);
+              } catch (hotspotServerError) {
+                console.warn('⚠️ Failed to create hotspot server, but trader was created:', hotspotServerError);
+              }
             } catch (masqueradeError) {
               console.warn('⚠️ Failed to create masquerade nat rule, but trader was created:', masqueradeError);
             }
@@ -187,26 +240,10 @@ export async function POST(request: NextRequest) {
           }
         } catch (poolError) {
           console.warn('⚠️ Failed to create address pool, but trader was created:', poolError);
-        }
-        console.log(`✅ Masquerade nat rule created: ${phone}-masquerade for trader ${name}`);
-        
+        }        
       } catch (ipError) {
         console.warn('⚠️ Failed to get highest hotspot IP, but trader was created:', ipError);
       }
-      
-        // Create MikroTik hotspot user for the trader
-        try {
-          const mikrotikClient = await getMikroTikClient(mikrotikId);
-  
-          await mikrotikClient.menu('/ip/hotspot/user').add({
-            name: phone,
-            password: password,
-            profile: 'default',
-            comment: `Trader: ${name} (${phone})`
-          });
-        } catch (mikrotikError) {
-          console.warn('⚠️ Failed to create MikroTik hotspot user, but trader was created:', mikrotikError);
-        }
       
     }
     

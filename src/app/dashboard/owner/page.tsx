@@ -1300,7 +1300,7 @@ export default function OwnerDashboard() {
                 </thead>
                 <tbody className={`divide-y transition-colors ${isDarkMode ? 'bg-gray-800 divide-gray-700' : 'bg-white divide-gray-200'}`}>
                   {mikrotiks.map((mikrotik) => (
-                    <tr key={mikrotik.id}>
+                    <tr key={mikrotik.host}>
                       <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                         {mikrotik.name}
                       </td>

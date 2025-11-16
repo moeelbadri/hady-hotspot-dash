@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DatabaseService } from '@/lib/database';
+import { getMikroTikClient } from '@/lib/mikrotik-api';
 
 // GET /api/traders/[phone] - Get trader by phone
 export async function GET(
@@ -124,6 +125,7 @@ export async function DELETE(
     
     // Check if trader exists first
     const trader = await DatabaseService.getTrader(phone);
+ 
     if (!trader) {
       return NextResponse.json(
         { success: false, error: 'Trader not found' },
@@ -133,6 +135,36 @@ export async function DELETE(
 
     // Delete trader (cascading deletes will handle associated data)
     await DatabaseService.deleteTrader(phone);
+    // delete trader auth user
+    await DatabaseService.deleteAuthUser(phone);
+
+       
+    // delete trader hotspot server
+    const mikrotikClient = await getMikroTikClient(trader.mikrotik_id);
+    // get hotspot server by comment
+    await mikrotikClient.menu('/ip/hotspot').delete({
+      name: phone,
+    });
+    // delete hotspot server profile by name
+    await mikrotikClient.menu('/ip/hotspot/profile').delete({
+      name: `${phone}-profile`,
+    });
+    // // delete dhcp server by comment
+    // await mikrotikClient.menu('/ip/dhcp-server').delete({
+    //   comment: `Trader: ${trader.name} (${trader.phone})`
+    // });
+    // get address list by comment
+     await mikrotikClient.menu('/ip/address').delete({
+      comment: `Trader: ${trader.name} (${trader.phone})`
+    });
+    // delete pool by comment
+    await mikrotikClient.menu('/ip/pool').delete({
+      comment: `Trader: ${trader.name} (${trader.phone})`
+    });
+    // get masquerade nat rule by comment
+     await mikrotikClient.menu('/ip/firewall/nat').delete({
+      comment: `Trader: ${trader.name} (${trader.phone})`
+    });
 
     return NextResponse.json({
       success: true,
