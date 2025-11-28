@@ -356,7 +356,7 @@ export default function DiscountManager({ traderPhone, isDarkMode }: DiscountMan
             No discounts found. Create your first discount offer!
           </div>
         ) : (
-          discounts.map((discount) => (
+          discounts.map((discount: Discount) => (
             <div
               key={discount.id}
               className={`p-4 rounded-lg border ${

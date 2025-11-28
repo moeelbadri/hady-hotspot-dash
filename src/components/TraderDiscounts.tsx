@@ -79,7 +79,7 @@ export default function TraderDiscounts({ traderPhone, isDarkMode }: TraderDisco
         🎉 Active Discounts
       </h4>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {discounts.map((discount) => (
+        {discounts.map((discount: Discount) => (
           <div
             key={discount.id}
             className={`p-3 rounded-lg border-2 border-dashed transition-colors ${

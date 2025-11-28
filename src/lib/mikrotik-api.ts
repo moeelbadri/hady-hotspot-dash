@@ -395,7 +395,15 @@ class MikroTikAPI {
       throw error;
     }
   }
-
+  // Get all dhcp servers
+  async getDhcpServers(): Promise<any[]> {
+    try {
+      return await this.sendCommand('/ip/dhcp-server/print');
+    } catch (error) {
+      console.error('Error fetching dhcp servers:', error);
+      throw error;
+    }
+  }
   // Get all interfaces
   async getInterfaces(): Promise<any[]> {
     try {
@@ -411,22 +419,22 @@ class MikroTikAPI {
   async getAvailableEthernetPorts(): Promise<any[]> {
     try {
       const interfaces = await this.getInterfaces();
-      
+      const dhcpServers = await this.getDhcpServers();
       // Filter for ethernet interfaces that are:
       // 1. Type is ether or ethernet
       // 2. Not a slave (no master property or master is empty)
       // 3. Not running (running is false or not set)
       const available = interfaces.filter((iface: any) => {
         const type = (iface.type || '').toLowerCase();
-        const isEthernet = type === 'ether' || type === 'ethernet' || type.includes('ether');
-    
-        const isSlave = iface.slave === 'true' || iface.slave === true;
+        const isEthernet = type === 'bridge';
+
         const isRunning = iface.running === 'true' || iface.running === true;
         const isDisabled = iface.disabled === 'true' || iface.disabled === true;
-        
-        return isEthernet && !isSlave && !isRunning && !isDisabled;
+        const isDhcpServer = dhcpServers.some((dhcp: any) => dhcp.interface === iface.name);
+
+        return isEthernet && isRunning && !isDisabled && !isDhcpServer;
       });
-      
+
       return available.map((iface: any) => ({
         id: iface['.id'],
         name: iface.name,
