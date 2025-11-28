@@ -144,21 +144,21 @@ export function TraderReportsChart({ traderPhone, isDarkMode = false }: TraderRe
 
       // Sort transactions by date to calculate cumulative balance
       const sortedTransactions = filteredTransactions
-        .filter(transaction => transaction.created_at && transaction.type)
-        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+        .filter((transaction: { created_at: any; type: any; }) => transaction.created_at && transaction.type)
+        .sort((a: { created_at: string | number | Date; }, b: { created_at: string | number | Date; }) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
 
       // Calculate summary stats
       const totalSpend = filteredTransactions
-        .filter(t => t.type === 'voucher_purchase')
-        .reduce((sum, t) => sum + Math.abs(t.amount || 0), 0)
+        .filter((t: { type: string; }) => t.type === 'voucher_purchase')
+        .reduce((sum: number, t: { amount: any; }) => sum + Math.abs(t.amount || 0), 0)
       
       const totalCodes = filteredTransactions
-        .filter(t => t.type === 'voucher_purchase')
+        .filter((t: { type: string; }) => t.type === 'voucher_purchase')
         .length
       
       const totalIncome = filteredTransactions
-        .filter(t => t.type === 'credit_add')
-        .reduce((sum, t) => sum + Math.abs(t.amount || 0), 0)
+        .filter((t: { type: string; }) => t.type === 'credit_add')
+        .reduce((sum: number, t: { amount: any; }) => sum + Math.abs(t.amount || 0), 0)
 
       setSummaryStats({ totalSpend, totalCodes, totalIncome })
 
@@ -170,7 +170,7 @@ export function TraderReportsChart({ traderPhone, isDarkMode = false }: TraderRe
         // For all-time, create data points for each transaction
         const dailyBalances: { [key: string]: number } = {}
         
-        sortedTransactions.forEach(transaction => {
+        sortedTransactions.forEach((transaction: { created_at: string | number | Date; type: string; amount: any; }) => {
           const date = new Date(transaction.created_at)
           const dayKey = date.toISOString().split('T')[0]
 
@@ -212,13 +212,13 @@ export function TraderReportsChart({ traderPhone, isDarkMode = false }: TraderRe
           const dayName = date.toLocaleDateString('en-US', { weekday: 'short' })
           
           // Find all transactions for this day
-          const dayTransactions = sortedTransactions.filter(transaction => {
+          const dayTransactions = sortedTransactions.filter((transaction: { created_at: string | number | Date; }) => {
             const transactionDate = new Date(transaction.created_at)
             return transactionDate.toISOString().split('T')[0] === dayKey
           })
           
           // Add/subtract transactions for this day to cumulative balance
-          dayTransactions.forEach(transaction => {
+          dayTransactions.forEach((transaction: { type: string; amount: any; }) => {
             if (transaction.type === 'credit_add') {
               cumulativeBalance += Math.abs(transaction.amount || 0)
             } else if (transaction.type === 'voucher_purchase') {

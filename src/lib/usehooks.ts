@@ -533,6 +533,7 @@ export function useCreateMikroTik() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mikrotiks'] });
+      queryClient.invalidateQueries({ queryKey: ['mikrotik-devices'] });
     },
   });
 }
