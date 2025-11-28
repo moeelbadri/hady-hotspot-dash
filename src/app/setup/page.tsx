@@ -1,27 +1,23 @@
 'use client';
 
 import { useState } from 'react';
+import { useSetupTraders } from '@/lib/usehooks';
+import { SpinnerInline } from '@/components/ui/spinner';
 
 export default function SetupPage() {
-  const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string>('');
+  const setupTradersMutation = useSetupTraders();
 
   const setupTraders = async () => {
-    setLoading(true);
     setError('');
     setResult(null);
 
     try {
-      const response = await fetch('/api/setup-traders', {
-        method: 'POST',
-      });
-      const data = await response.json();
+      const data = await setupTradersMutation.mutateAsync();
       setResult(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
-      setLoading(false);
+    } catch (err: any) {
+      setError(err.message || 'Unknown error');
     }
   };
 
@@ -37,10 +33,17 @@ export default function SetupPage() {
           </p>
           <button
             onClick={setupTraders}
-            disabled={loading}
-            className="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            disabled={setupTradersMutation.isPending}
+            className="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center"
           >
-            {loading ? 'Setting up...' : 'Setup Trader Authentication'}
+            {setupTradersMutation.isPending ? (
+              <>
+                <SpinnerInline size="sm" className="mr-2" />
+                Setting up...
+              </>
+            ) : (
+              'Setup Trader Authentication'
+            )}
           </button>
         </div>
 

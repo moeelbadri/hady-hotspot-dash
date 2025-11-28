@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useTraderDiscounts, useCreateDiscount, useUpdateDiscount, useDeleteDiscount } from '@/lib/usehooks';
+import { Spinner, SpinnerInline } from '@/components/ui/spinner';
 
 interface Discount {
   id: string;
@@ -23,8 +25,11 @@ interface DiscountManagerProps {
 }
 
 export default function DiscountManager({ traderPhone, isDarkMode }: DiscountManagerProps) {
-  const [discounts, setDiscounts] = useState<Discount[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: discounts = [], isLoading: loading } = useTraderDiscounts(traderPhone);
+  const createDiscountMutation = useCreateDiscount();
+  const updateDiscountMutation = useUpdateDiscount();
+  const deleteDiscountMutation = useDeleteDiscount();
+  
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingDiscount, setEditingDiscount] = useState<Discount | null>(null);
 
@@ -40,59 +45,29 @@ export default function DiscountManager({ traderPhone, isDarkMode }: DiscountMan
     is_active: true
   });
 
-  useEffect(() => {
-    loadDiscounts();
-  }, [traderPhone]);
-
-  const loadDiscounts = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`/api/traders/${traderPhone}/discounts`);
-      const data = await response.json();
-      
-      if (data.success) {
-        setDiscounts(data.data);
-      } else {
-        console.error('Failed to load discounts:', data.error);
-      }
-    } catch (error) {
-      console.error('Error loading discounts:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     try {
-      const url = editingDiscount 
-        ? `/api/traders/${traderPhone}/discounts/${editingDiscount.id}`
-        : `/api/traders/${traderPhone}/discounts`;
-      
-      const method = editingDiscount ? 'PUT' : 'POST';
-      
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        await loadDiscounts();
-        setShowCreateForm(false);
-        setEditingDiscount(null);
-        resetForm();
+      if (editingDiscount) {
+        await updateDiscountMutation.mutateAsync({
+          traderPhone,
+          discountId: editingDiscount.id,
+          discountData: formData
+        });
       } else {
-        alert(`Error: ${data.error}`);
+        await createDiscountMutation.mutateAsync({
+          traderPhone,
+          discountData: formData
+        });
       }
-    } catch (error) {
+      
+      setShowCreateForm(false);
+      setEditingDiscount(null);
+      resetForm();
+    } catch (error: any) {
       console.error('Error saving discount:', error);
-      alert('Failed to save discount');
+      alert(`Error: ${error.message || 'Failed to save discount'}`);
     }
   };
 
@@ -100,20 +75,13 @@ export default function DiscountManager({ traderPhone, isDarkMode }: DiscountMan
     if (!confirm('Are you sure you want to delete this discount?')) return;
     
     try {
-      const response = await fetch(`/api/traders/${traderPhone}/discounts/${discountId}`, {
-        method: 'DELETE',
+      await deleteDiscountMutation.mutateAsync({
+        traderPhone,
+        discountId
       });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        await loadDiscounts();
-      } else {
-        alert(`Error: ${data.error}`);
-      }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting discount:', error);
-      alert('Failed to delete discount');
+      alert(`Error: ${error.message || 'Failed to delete discount'}`);
     }
   };
 
@@ -174,7 +142,7 @@ export default function DiscountManager({ traderPhone, isDarkMode }: DiscountMan
   if (loading) {
     return (
       <div className="flex justify-center items-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <Spinner size="md" />
       </div>
     );
   }
@@ -353,9 +321,17 @@ export default function DiscountManager({ traderPhone, isDarkMode }: DiscountMan
             <div className="flex space-x-2">
               <button
                 type="submit"
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                disabled={createDiscountMutation.isPending || updateDiscountMutation.isPending}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
-                {editingDiscount ? 'Update Discount' : 'Create Discount'}
+                {createDiscountMutation.isPending || updateDiscountMutation.isPending ? (
+                  <span className="flex items-center">
+                    <SpinnerInline size="sm" className="mr-2" />
+                    {editingDiscount ? 'Updating...' : 'Creating...'}
+                  </span>
+                ) : (
+                  editingDiscount ? 'Update Discount' : 'Create Discount'
+                )}
               </button>
               <button
                 type="button"
@@ -431,9 +407,10 @@ export default function DiscountManager({ traderPhone, isDarkMode }: DiscountMan
                   </button>
                   <button
                     onClick={() => handleDelete(discount.id)}
-                    className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                    disabled={deleteDiscountMutation.isPending}
+                    className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors disabled:opacity-50"
                   >
-                    Delete
+                    {deleteDiscountMutation.isPending ? 'Deleting...' : 'Delete'}
                   </button>
                 </div>
               </div>

@@ -3,6 +3,8 @@
 import * as React from "react"
 import { Line, LineChart, CartesianGrid, XAxis, YAxis } from "recharts"
 import { useState, useEffect } from "react"
+import { useTraderReports } from '@/lib/usehooks';
+import { Spinner } from '@/components/ui/spinner';
 
 import {
   Card,
@@ -47,89 +49,77 @@ interface SummaryStats {
   totalIncome: number
 }
 
-export function TraderReportsChart({ traderPhone, isDarkMode = false }: TraderReportsChartProps) {
+export function TraderReportsChart({ traderPhone, isDarkMode = false }: TraderReportsChartProps): React.ReactElement {
+  const { data: traderReports, isLoading: loading } = useTraderReports(traderPhone);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([])
   const [availableMonths, setAvailableMonths] = useState<MonthOption[]>([])
   const [selectedMonth, setSelectedMonth] = useState<string>("")
   const [summaryStats, setSummaryStats] = useState<SummaryStats>({ totalSpend: 0, totalCodes: 0, totalIncome: 0 })
-  const [loading, setLoading] = useState(true)
 
   // Fetch available months and initial data
   useEffect(() => {
+    if (!traderReports?.activity?.recentTransactions) {
+      return;
+    }
+    
     const fetchData = async () => {
       try {
-        setLoading(true)
+        const transactions = traderReports.activity.recentTransactions;
         
-        // Get trader transactions to determine available months
-        const response = await fetch(`/api/reports/trader/${traderPhone}`)
-        const result = await response.json()
-        
-        if (result.success && result.data.activity && result.data.activity.recentTransactions) {
-          const transactions = result.data.activity.recentTransactions
-          
-          // Ensure transactions is an array
-          if (!Array.isArray(transactions)) {
-            console.error('Invalid transaction data format')
-            return
-          }
-          
-          // Extract unique months from transactions
-          const monthSet = new Set<string>()
-          transactions.forEach((transaction: any) => {
-            const date = new Date(transaction.created_at)
-            const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-            monthSet.add(monthKey)
-          })
-          
-          // Convert to month options and sort by date (newest first)
-          const months = Array.from(monthSet)
-            .map(monthKey => {
-              const [year, month] = monthKey.split('-')
-              const date = new Date(parseInt(year), parseInt(month) - 1)
-              return {
-                value: monthKey,
-                label: date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' })
-              }
-            })
-            .sort((a, b) => b.value.localeCompare(a.value))
-          
-          // Add "All Time" option at the beginning
-          const monthsWithAllTime = [
-            { value: 'all-time', label: 'All Time' },
-            ...months
-          ]
-          
-          setAvailableMonths(monthsWithAllTime)
-          
-          // Set default to "All Time"
-          setSelectedMonth('all-time')
-          await loadChartData('all-time', transactions)
+        // Ensure transactions is an array
+        if (!Array.isArray(transactions)) {
+          console.error('Invalid transaction data format');
+          return;
         }
+        
+        // Extract unique months from transactions
+        const monthSet = new Set<string>();
+        transactions.forEach((transaction: any) => {
+          const date = new Date(transaction.created_at);
+          const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+          monthSet.add(monthKey);
+        });
+        
+        // Convert to month options and sort by date (newest first)
+        const months = Array.from(monthSet)
+          .map(monthKey => {
+            const [year, month] = monthKey.split('-');
+            const date = new Date(parseInt(year), parseInt(month) - 1);
+            return {
+              value: monthKey,
+              label: date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' })
+            };
+          })
+          .sort((a, b) => b.value.localeCompare(a.value));
+        
+        // Add "All Time" option at the beginning
+        const monthsWithAllTime = [
+          { value: 'all-time', label: 'All Time' },
+          ...months
+        ];
+        
+        setAvailableMonths(monthsWithAllTime);
+        
+        // Set default to "All Time"
+        setSelectedMonth('all-time');
+        await loadChartData('all-time', transactions);
       } catch (error) {
-        console.error('Error fetching trader data:', error)
-      } finally {
-        setLoading(false)
+        console.error('Error processing trader data:', error);
       }
-    }
+    };
 
-    if (traderPhone) {
+    if (traderPhone && traderReports) {
       fetchData()
     }
-  }, [traderPhone])
+  }, [traderPhone, traderReports])
 
   const loadChartData = async (monthKey: string, transactions?: any[]) => {
     try {
-      let transactionData = transactions
+      let transactionData = transactions || traderReports?.activity?.recentTransactions
       
-      // If no transactions provided, fetch them
+      // If no transactions available, return
       if (!transactionData) {
-        const response = await fetch(`/api/reports/trader/${traderPhone}`)
-        const result = await response.json()
-        if (result.success && result.data.activity && result.data.activity.recentTransactions) {
-          transactionData = result.data.activity.recentTransactions
-        } else {
-          return
-        }
+        return
       }
 
       // Ensure transactionData is not undefined
@@ -267,7 +257,7 @@ export function TraderReportsChart({ traderPhone, isDarkMode = false }: TraderRe
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center h-[300px]">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <Spinner size="md" />
           </div>
         </CardContent>
       </Card>

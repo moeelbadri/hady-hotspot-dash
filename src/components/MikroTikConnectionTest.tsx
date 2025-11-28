@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useTestMikroTik } from '@/lib/usehooks';
+import { SpinnerInline } from '@/components/ui/spinner';
 
 interface ConnectionStatus {
   connected: boolean;
@@ -11,13 +13,11 @@ interface ConnectionStatus {
 
 export default function MikroTikConnectionTest() {
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
-  const [loading, setLoading] = useState(false);
+  const testMikroTikMutation = useTestMikroTik();
 
   const testConnection = async () => {
-    setLoading(true);
     try {
-      const response = await fetch('/api/mikrotik/test');
-      const data = await response.json();
+      const data = await testMikroTikMutation.mutateAsync();
       
       setStatus({
         connected: data.success,
@@ -25,15 +25,13 @@ export default function MikroTikConnectionTest() {
         port: data.data?.port || 2080,
         message: data.message || data.error || 'Unknown status'
       });
-    } catch (error) {
+    } catch (error: any) {
       setStatus({
         connected: false,
         host: '162.19.154.225',
         port: 2080,
-        message: 'Connection test failed'
+        message: error.message || 'Connection test failed'
       });
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -45,10 +43,17 @@ export default function MikroTikConnectionTest() {
         <div className="flex items-center space-x-4">
           <button
             onClick={testConnection}
-            disabled={loading}
-            className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50"
+            disabled={testMikroTikMutation.isPending}
+            className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50 flex items-center"
           >
-            {loading ? 'Testing...' : 'Test Connection'}
+            {testMikroTikMutation.isPending ? (
+              <>
+                <SpinnerInline size="sm" className="mr-2" />
+                Testing...
+              </>
+            ) : (
+              'Test Connection'
+            )}
           </button>
           
           {status && (

@@ -9,13 +9,13 @@ export async function GET(request: NextRequest) {
     try {
       // Get the first active MikroTik device from the JSON file
       const devices = await getAllMikroTikDevices();
+      console.log('devices', devices);
       if (devices.length === 0) {
         throw new Error('No active MikroTik devices found');
       }
-      
       const mikrotikAPI = await getMikroTikAPI(devices[0].id);
+      const test = await mikrotikAPI.getClientConnection()
       const realUsers = await mikrotikAPI.getHotspotUsers();
-      
       
       return NextResponse.json({
         success: true,

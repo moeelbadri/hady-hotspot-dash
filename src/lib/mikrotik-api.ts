@@ -545,7 +545,8 @@ async function loadDevicesFromDatabase(): Promise<MikroTikDevice[]> {
 export async function getMikroTikAPI(deviceId: string): Promise<MikroTikAPI> {
   const devices = await loadDevicesFromDatabase();
   const device = devices.find(d => d.id === deviceId);
-  
+  console.log('device', device);
+
   if (!device) {
     throw new Error(`MikroTik device with ID ${deviceId} not found`);
   }

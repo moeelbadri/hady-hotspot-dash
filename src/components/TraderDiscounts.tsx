@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+import { useTraderDiscounts } from '@/lib/usehooks';
+import { Spinner } from '@/components/ui/spinner';
 
 interface Discount {
   id: string;
@@ -20,36 +22,16 @@ interface TraderDiscountsProps {
 }
 
 export default function TraderDiscounts({ traderPhone, isDarkMode }: TraderDiscountsProps) {
-  const [discounts, setDiscounts] = useState<Discount[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadDiscounts();
-  }, [traderPhone]);
-
-  const loadDiscounts = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`/api/traders/${traderPhone}/discounts`);
-      const data = await response.json();
-      
-      if (data.success) {
-        // Filter for active discounts only
-        const now = new Date();
-        const activeDiscounts = data.data.filter((discount: Discount) => {
-          if (!discount.is_active) return false;
-          const start = new Date(discount.start_time);
-          const end = new Date(discount.end_time);
-          return now >= start && now <= end;
-        });
-        setDiscounts(activeDiscounts);
-      }
-    } catch (error) {
-      console.error('Error loading discounts:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: allDiscounts = [], isLoading: loading } = useTraderDiscounts(traderPhone);
+  
+  // Filter for active discounts only
+  const now = new Date();
+  const discounts = allDiscounts.filter((discount: Discount) => {
+    if (!discount.is_active) return false;
+    const start = new Date(discount.start_time);
+    const end = new Date(discount.end_time);
+    return now >= start && now <= end;
+  });
 
   const getCategoryIcon = (category: string) => {
     switch (category) {
@@ -82,7 +64,7 @@ export default function TraderDiscounts({ traderPhone, isDarkMode }: TraderDisco
   if (loading) {
     return (
       <div className="flex justify-center items-center py-4">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+        <Spinner size="sm" />
       </div>
     );
   }

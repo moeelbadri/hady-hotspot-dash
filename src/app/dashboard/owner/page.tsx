@@ -3,12 +3,33 @@
 import React, { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { optimisticUpdates, selectiveRefresh } from '@/lib/optimistic-updates';
-import { useOwnerReports, useAllUsers, useAllSessions, useAllTraders } from '@/hooks/useDashboardData';
+import { 
+  useOwnerReports, 
+  useMikroTikUsers as useAllUsers, 
+  useMikroTikSessions as useAllSessions, 
+  useTraders as useAllTraders,
+  useMikroTiks,
+  useMikroTikInterfaces,
+  useTraderReports,
+  useTraderUsers,
+  useTraderClients,
+  useTraderPricing,
+  useAddCredit,
+  useCreateTrader,
+  useUpdateTrader,
+  useDeleteTrader,
+  useToggleTraderStatus,
+  useCreateMikroTik,
+  useDeleteMikroTik,
+  useUpdatePricing,
+  useLogout
+} from '@/lib/usehooks';
 import { useTheme } from '@/lib/theme-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { TraderReportsChart } from '@/components/trader-reports-chart';
 import DiscountManager from '@/components/DiscountManager';
+import { SpinnerPage, Spinner } from '@/components/ui/spinner';
 import { formatDuration, parseMikroTikTime, formatMikroTikTime } from '@/utils';
 
 interface TraderStats {
@@ -31,6 +52,336 @@ interface TraderWithStats {
   lastTransaction?: string;
 }
 
+// Component for trader content view using hooks
+function TraderContentView({ 
+  traderPhone, 
+  currentView, 
+  transactionFilter, 
+  setTransactionFilter,
+  isDarkMode,
+  allTraders,
+  traderPricing,
+  setTraderPricing,
+  updatePricing
+}: {
+  traderPhone: string;
+  currentView: 'transactions' | 'users' | 'clients' | 'pricing' | 'reports';
+  transactionFilter: string;
+  setTransactionFilter: (filter: string) => void;
+  isDarkMode: boolean;
+  allTraders: any[];
+  traderPricing: Record<string, any>;
+  setTraderPricing: (pricing: any) => void;
+  updatePricing: (traderPhone: string, pricing: any) => void;
+}) {
+  const { data: traderReports, isLoading: reportsLoading } = useTraderReports(traderPhone);
+  const { data: traderUsers = [], isLoading: usersLoading } = useTraderUsers(traderPhone);
+  const { data: traderClients = [], isLoading: clientsLoading } = useTraderClients(traderPhone);
+  const { data: traderPricingData } = useTraderPricing(traderPhone);
+
+  const isLoading = reportsLoading || usersLoading || clientsLoading;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Spinner size="md" text={`Loading ${currentView}...`} />
+      </div>
+    );
+  }
+
+  if (currentView === 'transactions') {
+    const transactions = traderReports?.activity?.recentTransactions || [];
+    const filteredTransactions = transactionFilter === 'all' 
+      ? transactions 
+      : transactions.filter((t: any) => t.type === transactionFilter);
+    
+    return (
+      <div>
+        {/* Transaction Filter */}
+        <div className="mb-6 px-4 py-3">
+          <label className={`block text-sm font-medium mb-2 transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            Filter by Type:
+          </label>
+          <select
+            value={transactionFilter}
+            onChange={(e) => setTransactionFilter(e.target.value)}
+            className={`px-3 py-2 border rounded-md text-sm transition-colors ${
+              isDarkMode 
+                ? 'bg-gray-700 border-gray-600 text-white' 
+                : 'bg-white border-gray-300 text-gray-900'
+            }`}
+          >
+            <option value="all">All Transactions</option>
+            <option value="credit_add">Credit Added</option>
+            <option value="voucher_purchase">Voucher Purchase</option>
+            <option value="credit_deduct">Credit Deducted</option>
+            <option value="refund">Refund</option>
+          </select>
+        </div>
+        
+        {filteredTransactions.length > 0 ? (
+          <div className="max-h-80 overflow-y-auto">
+            <table className={`min-w-full divide-y transition-colors ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
+              <thead className={`sticky top-0 transition-colors ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                <tr>
+                  <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Date</th>
+                  <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Type</th>
+                  <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Amount</th>
+                  <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Created At</th>
+                  <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Description</th>
+                </tr>
+              </thead>
+              <tbody className={`divide-y transition-colors ${isDarkMode ? 'bg-gray-800 divide-gray-700' : 'bg-white divide-gray-200'}`}>
+                {filteredTransactions.map((transaction: any, index: number) => (
+                  <tr key={transaction.id || index}>
+                    <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {new Date(transaction.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-2 text-sm">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        transaction.type === 'credit_add' 
+                          ? 'bg-green-100 text-green-800'
+                          : transaction.type === 'voucher_purchase'
+                          ? 'bg-blue-100 text-blue-800'
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {transaction.type === 'credit_add' ? 'Credit Added' :
+                         transaction.type === 'voucher_purchase' ? 'Voucher Purchase' :
+                         transaction.type === 'credit_deduct' ? 'Credit Deducted' :
+                         transaction.type}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-sm font-medium">
+                      <span className={transaction.amount > 0 ? 'text-green-600' : 'text-red-600'}>
+                        {transaction.amount > 0 ? '+' : ''}${transaction.amount}
+                      </span>
+                    </td>
+                    <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {transaction.created_at ? new Date(transaction.created_at).toLocaleString().split(',')[1] : '-'}
+                    </td>
+                    <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{transaction.description}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className={`text-center py-8 transition-colors ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            {transactions.length === 0 
+              ? 'No transactions found for this trader.' 
+              : `No ${transactionFilter === 'all' ? '' : transactionFilter.replace('_', ' ')} transactions found.`
+            }
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (currentView === 'users') {
+    return traderUsers.length > 0 ? (
+      <div className="max-h-80 overflow-y-auto">
+        <table className={`min-w-full divide-y transition-colors ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
+          <thead className={`sticky top-0 transition-colors ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+            <tr>
+              <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Username</th>
+              <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Mac Address</th>
+              <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>IP Address</th>
+              <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Limit Uptime</th>
+              <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Live Uptime</th>
+              <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Status</th>
+              <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Data Usage(in/out MB)</th>
+              <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Created</th>
+            </tr>
+          </thead>
+          <tbody className={`divide-y transition-colors ${isDarkMode ? 'bg-gray-800 divide-gray-700' : 'bg-white divide-gray-200'}`}>
+            {traderUsers
+              .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+              .map((user: any, index: number) => (
+              <tr key={user.id || index}>
+                <td className={`px-4 py-2 text-sm font-medium transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{user.username}</td>
+                <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{user.macAddress || '-'}</td>
+                <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{user.address || '-'}</td>
+                <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                  {formatMikroTikTime(user.limit_uptime || '0')}
+                </td>
+                <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                  {user.uptime ? formatMikroTikTime(user.uptime) : '-'}
+                </td>
+                <td className="px-4 py-2 text-sm">
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                    user.isActive 
+                      ? 'bg-green-100 text-green-800' 
+                      : user.disabled 
+                        ? 'bg-red-100 text-red-800' 
+                        : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {user.isActive ? 'Online' : user.disabled ? 'Disabled' : 'Offline'}
+                  </span>
+                </td>
+                <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                  {user.bytes_in && user.bytes_out ? 
+                    `${(user.bytes_in / 1024 / 1024).toFixed(1)}MB / ${(user.bytes_out / 1024 / 1024).toFixed(1)}MB` : 
+                    '-'
+                  }
+                </td>
+                <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                  {user.created_at ? new Date(user.created_at).toLocaleString() : '-'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    ) : (
+      <div className={`text-center py-8 transition-colors ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+        No users found for this trader.
+      </div>
+    );
+  }
+
+  if (currentView === 'clients') {
+    return traderClients.length > 0 ? (
+      <div className="max-h-80 overflow-y-auto">
+        <table className={`min-w-full divide-y transition-colors ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
+          <thead className={`sticky top-0 transition-colors ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+            <tr>
+              <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Phone</th>
+              <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>MAC Address</th>
+              <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Status</th>
+              <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Session Info</th>
+              <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Rewarded User</th>
+              <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Created</th>
+            </tr>
+          </thead>
+          <tbody className={`divide-y transition-colors ${isDarkMode ? 'bg-gray-800 divide-gray-700' : 'bg-white divide-gray-200'}`}>
+            {traderClients.map((client: any, index: number) => (
+              <tr key={client.id || index}>
+                <td className={`px-4 py-2 text-sm font-medium transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{client.phone}</td>
+                <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{client.mac_address}</td>
+                <td className="px-4 py-2 whitespace-nowrap">
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                    client.isActive 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {client.isActive ? 'Online' : 'Offline'}
+                  </span>
+                </td>
+                <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                  {client.sessionData ? (
+                    <div className="text-xs">
+                      <div>IP: {client.sessionData.address}</div>
+                      <div>User: {client.sessionData.username}</div>
+                      <div>Uptime: {client.sessionData.uptime}</div>
+                      <div>Data: {(client.sessionData.bytesIn / 1024 / 1024).toFixed(1)}MB / {(client.sessionData.bytesOut / 1024 / 1024).toFixed(1)}MB</div>
+                    </div>
+                  ) : (
+                    <span className="text-gray-500 text-xs">No active session</span>
+                  )}
+                </td>
+                <td className="px-4 py-2 whitespace-nowrap">
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                    client.rewarded_user ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {client.rewarded_user ? 'Yes' : 'No'}
+                  </span>
+                </td>
+                <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                  {new Date(client.created_at).toLocaleString()}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    ) : (
+      <div className={`text-center py-8 transition-colors ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+        No clients found for this trader.
+      </div>
+    );
+  }
+
+  if (currentView === 'pricing') {
+    const fullTrader = allTraders.find((t: any) => t.phone === traderPhone);
+    const pricing = traderPricing[traderPhone] || traderPricingData || {
+      hour: fullTrader?.hour_price || 1,
+      day: fullTrader?.day_price || 4,
+      week: fullTrader?.week_price || 20,
+      month: fullTrader?.month_price || 60
+    };
+    return (
+      <div className="p-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[
+            { key: 'hour', label: 'Hour', icon: '⏰' },
+            { key: 'day', label: 'Day', icon: '📅' },
+            { key: 'week', label: 'Week', icon: '📆' },
+            { key: 'month', label: 'Month', icon: '🗓️' }
+          ].map((item) => (
+            <div key={item.key} className={`rounded-lg p-4 transition-colors ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <span className="text-2xl mr-3">{item.icon}</span>
+                  <span className={`font-medium transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{item.label}</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className={`text-sm transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>$</span>
+                  <input
+                    type="number"
+                    value={pricing[item.key]}
+                    onChange={(e) => setTraderPricing({
+                      ...traderPricing,
+                      [traderPhone]: {
+                        ...pricing,
+                        [item.key]: Number(e.target.value)
+                      }
+                    })}
+                    className={`w-20 px-2 py-1 border rounded text-sm transition-colors ${
+                      isDarkMode 
+                        ? 'border-gray-600 bg-gray-800 text-white placeholder-gray-400' 
+                        : 'border-gray-300 text-gray-900 placeholder-gray-700'
+                    }`}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4">
+          <button
+            onClick={() => updatePricing(traderPhone, traderPricing[traderPhone] || pricing)}
+            style={{ cursor: 'pointer' }}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          >
+            Update Pricing
+          </button>
+        </div>
+        
+        {/* Discount Manager */}
+        <div className="mt-6">
+          <DiscountManager 
+            traderPhone={traderPhone} 
+            isDarkMode={isDarkMode} 
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (currentView === 'reports') {
+    return (
+      <div className="p-4">
+        <TraderReportsChart 
+          traderPhone={traderPhone} 
+          isDarkMode={isDarkMode} 
+        />
+      </div>
+    );
+  }
+
+  return null;
+}
+
 export default function OwnerDashboard() {
   // React Query client for manual invalidation
   const queryClient = useQueryClient();
@@ -43,12 +394,6 @@ export default function OwnerDashboard() {
   const [showCreateMikroTik, setShowCreateMikroTik] = useState(false);
   const [activeTab, setActiveTab] = useState<'traders' | 'mikrotiks'>('traders');
   const [expandedTraders, setExpandedTraders] = useState<Set<string>>(new Set());
-  const [traderTransactions, setTraderTransactions] = useState<Record<string, any[]>>({});
-  const [traderUsers, setTraderUsers] = useState<Record<string, any[]>>({});
-  const [traderClients, setTraderClients] = useState<Record<string, any[]>>({});
-  const [loadingTransactions, setLoadingTransactions] = useState<Set<string>>(new Set());
-  const [loadingUsers, setLoadingUsers] = useState<Set<string>>(new Set());
-  const [loadingClients, setLoadingClients] = useState<Set<string>>(new Set());
   const [traderContentView, setTraderContentView] = useState<Record<string, 'transactions' | 'users' | 'clients' | 'pricing' | 'reports'>>({});
   const { resolvedTheme } = useTheme();
   const isDarkMode = resolvedTheme === 'dark';
@@ -95,7 +440,9 @@ export default function OwnerDashboard() {
       lastTransaction: undefined
     };
   });
-  const [mikrotiks, setMikrotiks] = useState<any[]>([]);
+  // MikroTik queries
+  const { data: mikrotiks = [], isLoading: mikrotiksLoading } = useMikroTiks();
+  
   const [newTrader, setNewTrader] = useState({
     name: '',
     phone: '',
@@ -107,8 +454,9 @@ export default function OwnerDashboard() {
     mikrotikPort: 8728,
     ethernetPort: ''
   });
-  const [availablePorts, setAvailablePorts] = useState<any[]>([]);
-  const [loadingPorts, setLoadingPorts] = useState(false);
+  
+  // MikroTik interfaces query
+  const { data: availablePorts = [], isLoading: loadingPorts } = useMikroTikInterfaces(newTrader.mikrotikId);
   const [newMikroTik, setNewMikroTik] = useState({
     name: '',
     host: '',
@@ -119,36 +467,23 @@ export default function OwnerDashboard() {
     isActive: true
   });
 
+  // Mutations
+  const addCreditMutation = useAddCredit();
+  const createTraderMutation = useCreateTrader();
+  const updateTraderMutation = useUpdateTrader();
+  const deleteTraderMutation = useDeleteTrader();
+  const toggleTraderStatusMutation = useToggleTraderStatus();
+  const createMikroTikMutation = useCreateMikroTik();
+  const deleteMikroTikMutation = useDeleteMikroTik();
+  const updatePricingMutation = useUpdatePricing();
+  const logoutMutation = useLogout();
+
   useEffect(() => {
-    loadDashboardData();
-    loadMikroTiks();
+    // Dashboard data is now managed by React Query hooks
+    setLoading(false);
   }, []);
 
-  // Auto-refresh trader data based on interval
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // Refresh data for all expanded traders
-      expandedTraders.forEach(traderPhone => {
-        const currentView = traderContentView[traderPhone];
-        if (currentView) {
-          loadTraderContent(traderPhone, currentView);
-        }
-      });
-    }, refreshInterval * 1000);
-
-    return () => clearInterval(interval);
-  }, [expandedTraders, traderContentView, refreshInterval]);
-
-  const loadDashboardData = async () => {
-    try {
-      // Dashboard data is now managed by React Query hooks
-      // No need to manually load data here
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Auto-refresh trader data based on interval - handled by React Query refetchInterval
 
   const addCredit = async (traderPhone: string, amount: number) => {
     try {
@@ -159,41 +494,18 @@ export default function OwnerDashboard() {
       // Apply optimistic update immediately
       optimisticUpdates.creditAdded(traderPhone, amount, currentTrader.credit);
       
-      // Make API call to add credit
-      const response = await fetch('/api/credits/add', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          traderPhone,
-          amount,
-          description: `Credit added by owner: $${amount}`
-        })
+      // Use mutation hook
+      await addCreditMutation.mutateAsync({
+        traderPhone,
+        amount,
+        description: `Credit added by owner: $${amount}`
       });
       
-      const result = await response.json();
-      
-      if (result.success) {
-        // Invalidate and refetch all relevant queries immediately
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['all-traders'] }),
-          queryClient.invalidateQueries({ queryKey: ['owner-reports'] }),
-          queryClient.invalidateQueries({ queryKey: ['all-users'] }),
-          queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
-        ]);
-        
-        setSelectedTrader(null);
-        setCreditAmount(0);
-      } else {
-        // Revert optimistic update if API call failed
-        console.error('❌ Failed to add credit:', result.error);
-      }
+      setSelectedTrader(null);
+      setCreditAmount(0);
     } catch (error) {
       console.error('Error adding credit:', error);
       // Data will be reverted via React Query
-      // Stats will be updated via React Query
-      // Failed to add credit - you can add error handling here
     }
   };
 
@@ -203,37 +515,18 @@ export default function OwnerDashboard() {
       const trader = allTraders.find((t: any) => t.phone === traderPhone);
       if (!trader) return;
 
-      // Update trader status using API
-      const response = await fetch(`/api/traders/${traderPhone}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          isActive: !trader.is_active
-        })
+      // Use mutation hook
+      await toggleTraderStatusMutation.mutateAsync({
+        phone: traderPhone,
+        isActive: !trader.is_active
       });
-
-      const result = await response.json();
-
-      if (result.success) {
-        // Invalidate and refetch all relevant queries immediately
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['all-traders'] }),
-          queryClient.invalidateQueries({ queryKey: ['owner-reports'] })
-        ]);
-        
-      } else {
-        console.error('❌ Failed to update trader status:', result.error);
-      }
     } catch (error) {
       console.error('Error toggling trader status:', error);
-      // Data will be reverted via React Query
     }
   };
 
-  const handleMikroTikSelection = async (mikrotikId: string) => {
-    const selectedMikroTik = mikrotiks.find(m => m.id === mikrotikId);
+  const handleMikroTikSelection = (mikrotikId: string) => {
+    const selectedMikroTik = mikrotiks.find((m: any) => m.id === mikrotikId);
     if (selectedMikroTik) {
       setNewTrader(prev => ({
         ...prev,
@@ -244,146 +537,63 @@ export default function OwnerDashboard() {
         mikrotikPort: selectedMikroTik.port,
         ethernetPort: '' // Reset ethernet port when MikroTik changes
       }));
-
-      // Fetch available ethernet ports for this MikroTik
-      if (mikrotikId) {
-        setLoadingPorts(true);
-        try {
-          const response = await fetch(`/api/mikrotiks/interfaces/available?mikrotikId=${mikrotikId}`);
-          const result = await response.json();
-          if (result.success) {
-            setAvailablePorts(result.data || []);
-          } else {
-            console.error('Failed to fetch available ports:', result.error);
-            setAvailablePorts([]);
-          }
-        } catch (error) {
-          console.error('Error fetching available ports:', error);
-          setAvailablePorts([]);
-        } finally {
-          setLoadingPorts(false);
-        }
-      } else {
-        setAvailablePorts([]);
-      }
     }
   };
 
   const createTrader = async () => {
     try {
-      const response = await fetch('/api/traders', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(newTrader)
+      await createTraderMutation.mutateAsync(newTrader);
+      
+      setShowCreateTrader(false);
+      setNewTrader({
+        name: '',
+        phone: '',
+        password: '',
+        mikrotikId: '',
+        mikrotikHost: '',
+        mikrotikUsername: '',
+        mikrotikPassword: '',
+        mikrotikPort: 8728,
+        ethernetPort: ''
       });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        setShowCreateTrader(false);
-        setNewTrader({
-          name: '',
-          phone: '',
-          password: '',
-          mikrotikId: '',
-          mikrotikHost: '',
-          mikrotikUsername: '',
-          mikrotikPassword: '',
-          mikrotikPort: 8728,
-          ethernetPort: ''
-        });
-        setAvailablePorts([]);
-        
-        // Invalidate and refetch all relevant queries immediately
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['all-traders'] }),
-          queryClient.invalidateQueries({ queryKey: ['owner-reports'] })
-        ]);
-        
-      } else {
-        console.error('❌ Failed to create trader:', result.error);
-      }
     } catch (error) {
       console.error('Error creating trader:', error);
-      // Failed to create trader - you can add error handling here
-    }
-  };
-
-  const loadMikroTiks = async () => {
-    try {
-      const response = await fetch('/api/mikrotiks');
-      const result = await response.json();
-      
-      if (result.success) {
-        setMikrotiks(result.data);
-      } else {
-        console.error('❌ Failed to load MikroTik routers:', result.error);
-      }
-    } catch (error) {
-      console.error('Error loading MikroTik routers:', error);
+      alert('Failed to create trader. Please try again.');
     }
   };
 
   const createMikroTik = async () => {
     try {
-      const response = await fetch('/api/mikrotiks', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(newMikroTik)
+      await createMikroTikMutation.mutateAsync(newMikroTik);
+      
+      setShowCreateMikroTik(false);
+      setNewMikroTik({
+        name: '',
+        host: '',
+        username: '',
+        password: '',
+        port: 8728,
+        description: '',
+        isActive: true
       });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        setShowCreateMikroTik(false);
-        setNewMikroTik({
-          name: '',
-          host: '',
-          username: '',
-          password: '',
-          port: 8728,
-          description: '',
-          isActive: true
-        });
-        
-        // Add new MikroTik to the list instead of full reload
-        setMikrotiks(prev => [...prev, result.data]);
-      } else {
-        console.error('❌ Failed to create MikroTik router:', result.error);
-      }
     } catch (error) {
       console.error('Error creating MikroTik router:', error);
-      // Failed to create MikroTik router - you can add error handling here
+      alert('Failed to create MikroTik router. Please try again.');
     }
   };
 
   const deleteMikroTik = async (id: string) => {
     if (confirm('Are you sure you want to delete this MikroTik router?')) {
       try {
-        const response = await fetch(`/api/mikrotiks/${id}`, {
-          method: 'DELETE'
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-          // Remove from list instead of full reload
-          setMikrotiks(prev => prev.filter(m => m.id !== id));
-        } else {
-          console.error('❌ Failed to delete MikroTik router:', result.error);
-        }
+        await deleteMikroTikMutation.mutateAsync(id);
       } catch (error) {
         console.error('Error deleting MikroTik router:', error);
-        // Failed to delete MikroTik router - you can add error handling here
+        alert('Failed to delete MikroTik router. Please try again.');
       }
     }
   };
 
-  const toggleTraderExpansion = async (traderPhone: string) => {
+  const toggleTraderExpansion = (traderPhone: string) => {
     const isExpanded = expandedTraders.has(traderPhone);
     
     if (isExpanded) {
@@ -400,144 +610,23 @@ export default function OwnerDashboard() {
         ...prev,
         [traderPhone]: 'transactions'
       }));
-      
-      // Load transactions by default
-      await loadTraderContent(traderPhone, 'transactions');
     }
   };
 
-  const loadTraderContent = async (traderPhone: string, contentType: 'transactions' | 'users' | 'clients' | 'pricing' | 'reports') => {
-    if (contentType === 'transactions') {
-      setLoadingTransactions(prev => new Set(prev).add(traderPhone));
-      
-      try {
-        const response = await fetch(`/api/reports/trader/${traderPhone}`);
-        const result = await response.json();
-        
-        if (result.success && result.data.activity && result.data.activity.recentTransactions) {
-          setTraderTransactions(prev => ({
-            ...prev,
-            [traderPhone]: result.data.activity.recentTransactions
-          }));
-        }
-      } catch (error) {
-        console.error('Error fetching trader transactions:', error);
-      } finally {
-        setLoadingTransactions(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(traderPhone);
-          return newSet;
-        });
-      }
-    } else if (contentType === 'users') {
-      setLoadingUsers(prev => new Set(prev).add(traderPhone));
-      
-      try {
-        const response = await fetch(`/api/traders/${traderPhone}/users`);
-        const result = await response.json();
-        
-        if (result.success) {
-          setTraderUsers(prev => ({
-            ...prev,
-            [traderPhone]: result.data
-          }));
-        }
-      } catch (error) {
-        console.error('Error fetching trader users:', error);
-      } finally {
-        setLoadingUsers(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(traderPhone);
-          return newSet;
-        });
-      }
-    } else if (contentType === 'clients') {
-      setLoadingClients(prev => new Set(prev).add(traderPhone));
-      
-      try {
-        const response = await fetch(`/api/traders/${traderPhone}/clients`);
-        const result = await response.json();
-        
-        if (result.success) {
-          setTraderClients(prev => ({
-            ...prev,
-            [traderPhone]: result.data
-          }));
-        }
-      } catch (error) {
-        console.error('Error fetching trader clients:', error);
-      } finally {
-        setLoadingClients(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(traderPhone);
-          return newSet;
-        });
-      }
-    } else if (contentType === 'pricing') {
-      // Load trader pricing data
-      try {
-        const trader = allTraders.find((t: any) => t.phone === traderPhone);
-        if (trader) {
-          setTraderPricing(prev => ({
-            ...prev,
-            [traderPhone]: trader.pricing
-          }));
-        }
-      } catch (error) {
-        console.error('Error loading trader pricing:', error);
-      }
-    } else if (contentType === 'reports') {
-      // Reports view doesn't need additional data loading
-      // All data is already available from the existing state
-    }
-  };
-
-  const switchTraderContentView = async (traderPhone: string, contentType: 'transactions' | 'users' | 'clients' | 'pricing' | 'reports') => {
+  const switchTraderContentView = (traderPhone: string, contentType: 'transactions' | 'users' | 'clients' | 'pricing' | 'reports') => {
     setTraderContentView(prev => ({
       ...prev,
       [traderPhone]: contentType
     }));
-    
-    if (contentType === 'pricing') {
-      // Load trader pricing data
-      try {
-        const trader = allTraders.find((t: any) => t.phone === traderPhone);
-        if (trader) {
-          setTraderPricing(prev => ({
-            ...prev,
-            [traderPhone]: trader.pricing
-          }));
-        }
-      } catch (error) {
-        console.error('Error loading trader pricing:', error);
-      }
-    } else {
-      await loadTraderContent(traderPhone, contentType);
-    }
   };
 
   const updatePricing = async (traderPhone: string, newPricing: any) => {
     try {
-      const response = await fetch(`/api/traders/${traderPhone}/pricing`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(newPricing)
+      await updatePricingMutation.mutateAsync({
+        traderPhone,
+        pricing: newPricing
       });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        setTraderPricing(prev => ({
-          ...prev,
-          [traderPhone]: newPricing
-        }));
-        alert('Pricing updated successfully!');
-      } else {
-        console.error('❌ Failed to update pricing:', result.error);
-        alert('Failed to update pricing. Please try again.');
-      }
+      alert('Pricing updated successfully!');
     } catch (error) {
       console.error('Error updating pricing:', error);
       alert('Failed to update pricing. Please try again.');
@@ -546,43 +635,17 @@ export default function OwnerDashboard() {
 
   const deleteTrader = async (traderPhone: string) => {
     try {
-      const response = await fetch(`/api/traders/${traderPhone}`, {
-        method: 'DELETE',
-      });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        // Invalidate and refetch all relevant queries immediately
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['all-traders'] }),
-          queryClient.invalidateQueries({ queryKey: ['owner-reports'] }),
-          queryClient.invalidateQueries({ queryKey: ['all-users'] }),
-          queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
-        ]);
-        
-        setDeleteConfirm({ show: false, trader: null });
-      } else {
-        console.error('❌ Failed to delete trader:', result.error);
-        alert('Failed to delete trader. Please try again.');
-      }
+      await deleteTraderMutation.mutateAsync(traderPhone);
+      setDeleteConfirm({ show: false, trader: null });
     } catch (error) {
       console.error('Error deleting trader:', error);
       alert('Failed to delete trader. Please try again.');
     }
   };
 
-
   // Show loading state
   if (reportsLoading || usersLoading || sessionsLoading || tradersLoading) {
-    return (
-      <div className={`flex items-center justify-center min-h-screen transition-colors ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-        <div className="flex flex-col items-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-          <div className={`text-lg transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Loading dashboard...</div>
-        </div>
-      </div>
-    );
+    return <SpinnerPage text="Loading dashboard..." />;
   }
 
   // Show error state
@@ -644,13 +707,10 @@ export default function OwnerDashboard() {
                     queryClient.invalidateQueries({ queryKey: ['all-users'] });
                     queryClient.invalidateQueries({ queryKey: ['all-sessions'] });
                     
-                    // Refresh expanded trader data
-                    expandedTraders.forEach(traderPhone => {
-                      const currentView = traderContentView[traderPhone];
-                      if (currentView) {
-                        loadTraderContent(traderPhone, currentView);
-                      }
-                    });
+                    // Refresh expanded trader data - handled by React Query
+                    queryClient.invalidateQueries({ queryKey: ['trader-reports'] });
+                    queryClient.invalidateQueries({ queryKey: ['trader-users'] });
+                    queryClient.invalidateQueries({ queryKey: ['trader-clients'] });
                   }}
                   title="Refresh all data now"
                 >
@@ -666,8 +726,13 @@ export default function OwnerDashboard() {
                   size="sm"
                   style={{ cursor: 'pointer' }}
                   onClick={async () => {
-                    await fetch('/api/auth/logout', { method: 'POST' });
-                    window.location.href = '/login';
+                    try {
+                      await logoutMutation.mutateAsync();
+                      window.location.href = '/login';
+                    } catch (error) {
+                      console.error('Logout failed:', error);
+                      window.location.href = '/login';
+                    }
                   }}
                 >
                   Logout
@@ -946,315 +1011,17 @@ export default function OwnerDashboard() {
                               </div>
                             </div>
                             <div className="overflow-x-auto">
-                              {(() => {
-                                const currentView = traderContentView[trader.phone] || 'transactions';
-                                const isLoading = loadingTransactions.has(trader.phone) || loadingUsers.has(trader.phone) || loadingClients.has(trader.phone);
-                                
-                                if (isLoading) {
-                                  return (
-                                    <div className="flex items-center justify-center py-8">
-                                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                                      <span className={`ml-2 text-sm transition-colors ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                        Loading {currentView}...
-                                      </span>
-                                    </div>
-                                  );
-                                }
-
-                                if (currentView === 'transactions') {
-                                  const transactions = traderTransactions[trader.phone] || [];
-                                  const filteredTransactions = transactionFilter === 'all' 
-                                    ? transactions 
-                                    : transactions.filter(t => t.type === transactionFilter);
-                                  
-                                  return (
-                                    <div>
-                                      {/* Transaction Filter */}
-                                      <div className="mb-6 px-4 py-3">
-                                        <label className={`block text-sm font-medium mb-2 transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                          Filter by Type:
-                                        </label>
-                                        <select
-                                          value={transactionFilter}
-                                          onChange={(e) => setTransactionFilter(e.target.value)}
-                                          className={`px-3 py-2 border rounded-md text-sm transition-colors ${
-                                            isDarkMode 
-                                              ? 'bg-gray-700 border-gray-600 text-white' 
-                                              : 'bg-white border-gray-300 text-gray-900'
-                                          }`}
-                                        >
-                                          <option value="all">All Transactions</option>
-                                          <option value="credit_add">Credit Added</option>
-                                          <option value="voucher_purchase">Voucher Purchase</option>
-                                          <option value="credit_deduct">Credit Deducted</option>
-                                          <option value="refund">Refund</option>
-                                        </select>
-                                      </div>
-                                      
-                                      {filteredTransactions.length > 0 ? (
-                                        <div className="max-h-80 overflow-y-auto">
-                                      <table className={`min-w-full divide-y transition-colors ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
-                                        <thead className={`sticky top-0 transition-colors ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                                          <tr>
-                                            <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Date</th>
-                                            <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Type</th>
-                                            <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Amount</th>
-                                            <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Created At</th>
-                                            <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Description</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody className={`divide-y transition-colors ${isDarkMode ? 'bg-gray-800 divide-gray-700' : 'bg-white divide-gray-200'}`}>
-                                          {filteredTransactions.map((transaction, index) => (
-                                            <tr key={transaction.id || index}>
-                                              <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                {new Date(transaction.created_at).toLocaleDateString()}
-                                              </td>
-                                              <td className="px-4 py-2 text-sm">
-                                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                                  transaction.type === 'credit_add' 
-                                                    ? 'bg-green-100 text-green-800'
-                                                    : transaction.type === 'voucher_purchase'
-                                                    ? 'bg-blue-100 text-blue-800'
-                                                    : 'bg-gray-100 text-gray-800'
-                                                }`}>
-                                                  {transaction.type === 'credit_add' ? 'Credit Added' :
-                                                   transaction.type === 'voucher_purchase' ? 'Voucher Purchase' :
-                                                   transaction.type === 'credit_deduct' ? 'Credit Deducted' :
-                                                   transaction.type}
-                                                </span>
-                                              </td>
-                                              <td className="px-4 py-2 text-sm font-medium">
-                                                <span className={transaction.amount > 0 ? 'text-green-600' : 'text-red-600'}>
-                                                  {transaction.amount > 0 ? '+' : ''}${transaction.amount}
-                                                </span>
-                                              </td>
-                                              <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                {transaction.created_at ? new Date(transaction.created_at).toLocaleString().split(',')[1] : '-'}
-                                              </td>
-                                              <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{transaction.description}</td>
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                        </div>
-                                      ) : (
-                                        <div className={`text-center py-8 transition-colors ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                          {transactions.length === 0 
-                                            ? 'No transactions found for this trader.' 
-                                            : `No ${transactionFilter === 'all' ? '' : transactionFilter.replace('_', ' ')} transactions found.`
-                                          }
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                }
-
-                                if (currentView === 'users') {
-                                  const users = traderUsers[trader.phone] || [];
-                                  return users.length > 0 ? (
-                                    <div className="max-h-80 overflow-y-auto">
-                                      <table className={`min-w-full divide-y transition-colors ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
-                                        <thead className={`sticky top-0 transition-colors ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                                          <tr>
-                                            <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Username</th>
-                                            <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Mac Address</th>
-                                            <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>IP Address</th>
-                                            <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Limit Uptime</th>
-                                            <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Live Uptime</th>
-                                            <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Status</th>
-                                            <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Data Usage(in/out MB)</th>
-                                            <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Created</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody className={`divide-y transition-colors ${isDarkMode ? 'bg-gray-800 divide-gray-700' : 'bg-white divide-gray-200'}`}>
-                                          {users
-                                            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-                                            .map((user, index) => (
-                                            <tr key={user.id || index}>
-                                              <td className={`px-4 py-2 text-sm font-medium transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{user.username}</td>
-                                              <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{user.macAddress || '-'}</td>
-                                              <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{user.address || '-'}</td>
-                                              <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                {formatMikroTikTime(user.limit_uptime || '0')}
-                                              </td>
-                                              <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                {user.uptime ? formatMikroTikTime(user.uptime) : '-'}
-                                              </td>
-                                              <td className="px-4 py-2 text-sm">
-                                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                                  user.isActive 
-                                                    ? 'bg-green-100 text-green-800' 
-                                                    : user.disabled 
-                                                      ? 'bg-red-100 text-red-800' 
-                                                      : 'bg-gray-100 text-gray-800'
-                                                }`}>
-                                                  {user.isActive ? 'Online' : user.disabled ? 'Disabled' : 'Offline'}
-                                                </span>
-                                              </td>
-                                              <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                {user.bytes_in && user.bytes_out ? 
-                                                  `${(user.bytes_in / 1024 / 1024).toFixed(1)}MB / ${(user.bytes_out / 1024 / 1024).toFixed(1)}MB` : 
-                                                  '-'
-                                                }
-                                              </td>
-                                              <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                {user.created_at ? new Date(user.created_at).toLocaleString() : '-'}
-                                              </td>
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  ) : (
-                                    <div className={`text-center py-8 transition-colors ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                      No users found for this trader.
-                                    </div>
-                                  );
-                                }
-
-                                if (currentView === 'clients') {
-                                  const clients = traderClients[trader.phone] || [];
-                                  return clients.length > 0 ? (
-                                    <div className="max-h-80 overflow-y-auto">
-                                      <table className={`min-w-full divide-y transition-colors ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
-                                        <thead className={`sticky top-0 transition-colors ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                                          <tr>
-                                            <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Phone</th>
-                                            <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>MAC Address</th>
-                                            <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Status</th>
-                                            <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Session Info</th>
-                                            <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Rewarded User</th>
-                                            <th className={`px-4 py-2 text-left text-xs font-medium uppercase tracking-wider transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Created</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody className={`divide-y transition-colors ${isDarkMode ? 'bg-gray-800 divide-gray-700' : 'bg-white divide-gray-200'}`}>
-                                          {clients.map((client, index) => (
-                                            <tr key={client.id || index}>
-                                              <td className={`px-4 py-2 text-sm font-medium transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{client.phone}</td>
-                                              <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{client.mac_address}</td>
-                                              <td className="px-4 py-2 whitespace-nowrap">
-                                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                                  client.isActive 
-                                                    ? 'bg-green-100 text-green-800' 
-                                                    : 'bg-gray-100 text-gray-800'
-                                                }`}>
-                                                  {client.isActive ? 'Online' : 'Offline'}
-                                                </span>
-                                              </td>
-                                              <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                {client.sessionData ? (
-                                                  <div className="text-xs">
-                                                    <div>IP: {client.sessionData.address}</div>
-                                                    <div>User: {client.sessionData.username}</div>
-                                                    <div>Uptime: {client.sessionData.uptime}</div>
-                                                    <div>Data: {(client.sessionData.bytesIn / 1024 / 1024).toFixed(1)}MB / {(client.sessionData.bytesOut / 1024 / 1024).toFixed(1)}MB</div>
-                                                  </div>
-                                                ) : (
-                                                  <span className="text-gray-500 text-xs">No active session</span>
-                                                )}
-                                              </td>
-                                              <td className="px-4 py-2 whitespace-nowrap">
-                                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                                  client.rewarded_user ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                                                }`}>
-                                                  {client.rewarded_user ? 'Yes' : 'No'}
-                                                </span>
-                                              </td>
-                                              <td className={`px-4 py-2 text-sm transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                {new Date(client.created_at).toLocaleString()}
-                                              </td>
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  ) : (
-                                    <div className={`text-center py-8 transition-colors ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                      No clients found for this trader.
-                                    </div>
-                                  );
-                                }
-
-                                if (currentView === 'pricing') {
-                                  const fullTrader = allTraders.find((t: any) => t.phone === trader.phone);
-                                  const pricing = traderPricing[trader.phone] || {
-                                    hour: fullTrader?.hour_price || 1,
-                                    day: fullTrader?.day_price || 4,
-                                    week: fullTrader?.week_price || 20,
-                                    month: fullTrader?.month_price || 60
-                                  };
-                                  return (
-                                    <div className="p-4">
-                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {[
-                                          { key: 'hour', label: 'Hour', icon: '⏰' },
-                                          { key: 'day', label: 'Day', icon: '📅' },
-                                          { key: 'week', label: 'Week', icon: '📆' },
-                                          { key: 'month', label: 'Month', icon: '🗓️' }
-                                        ].map((item) => (
-                                          <div key={item.key} className={`rounded-lg p-4 transition-colors ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                                            <div className="flex items-center justify-between">
-                                              <div className="flex items-center">
-                                                <span className="text-2xl mr-3">{item.icon}</span>
-                                                <span className={`font-medium transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{item.label}</span>
-                                              </div>
-                                              <div className="flex items-center space-x-2">
-                                                <span className={`text-sm transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>$</span>
-                                                <input
-                                                  type="number"
-                                                  value={pricing[item.key]}
-                                                  onChange={(e) => setTraderPricing(prev => ({
-                                                    ...prev,
-                                                    [trader.phone]: {
-                                                      ...pricing,
-                                                      [item.key]: Number(e.target.value)
-                                                    }
-                                                  }))}
-                                                  className={`w-20 px-2 py-1 border rounded text-sm transition-colors ${
-                                                    isDarkMode 
-                                                      ? 'border-gray-600 bg-gray-800 text-white placeholder-gray-400' 
-                                                      : 'border-gray-300 text-gray-900 placeholder-gray-700'
-                                                  }`}
-                                                />
-                                              </div>
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                      <div className="mt-4">
-                                        <button
-                                          onClick={() => updatePricing(trader.phone, traderPricing[trader.phone] || pricing)}
-                                          style={{ cursor: 'pointer' }}
-                                          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                                        >
-                                          Update Pricing
-                                        </button>
-                                      </div>
-                                      
-                                      {/* Discount Manager */}
-                                      <div className="mt-6">
-                                        <DiscountManager 
-                                          traderPhone={trader.phone} 
-                                          isDarkMode={isDarkMode} 
-                                        />
-                                      </div>
-                                    </div>
-                                  );
-                                }
-
-                                if (currentView === 'reports') {
-                                  return (
-                                    <div className="p-4">
-                                      <TraderReportsChart 
-                                        traderPhone={trader.phone} 
-                                        isDarkMode={isDarkMode} 
-                                      />
-                                    </div>
-                                  );
-                                }
-
-                                return null;
-                              })()}
+                              <TraderContentView 
+                                traderPhone={trader.phone}
+                                currentView={traderContentView[trader.phone] || 'transactions'}
+                                transactionFilter={transactionFilter}
+                                setTransactionFilter={setTransactionFilter}
+                                isDarkMode={isDarkMode}
+                                allTraders={allTraders}
+                                traderPricing={traderPricing}
+                                setTraderPricing={setTraderPricing}
+                                updatePricing={updatePricing}
+                              />
                             </div>
                           </div>
                         </td>
@@ -1299,7 +1066,7 @@ export default function OwnerDashboard() {
                   </tr>
                 </thead>
                 <tbody className={`divide-y transition-colors ${isDarkMode ? 'bg-gray-800 divide-gray-700' : 'bg-white divide-gray-200'}`}>
-                  {mikrotiks.map((mikrotik) => (
+                  {mikrotiks.map((mikrotik: any) => (
                     <tr key={mikrotik.host}>
                       <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                         {mikrotik.name}
@@ -1454,7 +1221,7 @@ export default function OwnerDashboard() {
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">Choose a MikroTik router...</option>
-                      {mikrotiks.map((mikrotik) => (
+                      {mikrotiks.map((mikrotik: any) => (
                         <option key={mikrotik.id} value={mikrotik.id}>
                           {mikrotik.name} ({mikrotik.host}:{mikrotik.port})
                         </option>
@@ -1482,7 +1249,7 @@ export default function OwnerDashboard() {
                             ? 'No available ports found' 
                             : 'Choose an ethernet port...'}
                         </option>
-                        {availablePorts.map((port) => (
+                        {availablePorts.map((port: any) => (
                           <option key={port.id} value={port.name}>
                             {port.name} {port.defaultName && port.defaultName !== port.name ? `(${port.defaultName})` : ''} {port.macAddress ? `- ${port.macAddress}` : ''}
                           </option>
@@ -1559,7 +1326,6 @@ export default function OwnerDashboard() {
                         mikrotikPort: 8728,
                         ethernetPort: ''
                       });
-                      setAvailablePorts([]);
                     }}
                     style={{ cursor: 'pointer' }}
                     className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"

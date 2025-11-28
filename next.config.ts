@@ -8,19 +8,21 @@ const nextConfig: NextConfig = {
     root: process.cwd()
   }
 };
-
+let id = 0;
 export default async (phase: any) => {
   if (phase === PHASE_PRODUCTION_SERVER) {
+    console.log('id', id++);
     console.log('Initializing WhatsApp Bot... at phase', phase);
     console.log('Initializing cron job... at phase', phase);
 
-    await initializeWhatsAppBot().catch(console.error);
+    // await initializeWhatsAppBot().catch(console.error);
     await initCronJobs().catch(console.error);
   }else if(phase === PHASE_DEVELOPMENT_SERVER){
+    console.log('id', id++);
     console.log('Initializing WhatsApp Bot... at phase', phase);
     console.log('Initializing cron job... at phase', phase);
 
-    await initializeWhatsAppBot().catch(console.error);
+    // await initializeWhatsAppBot().catch(console.error);
     await initCronJobs().catch(console.error);
   }
   return nextConfig;

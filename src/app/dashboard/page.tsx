@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth, useTraders, useOwnerReports } from '@/lib/usehooks';
+import { SpinnerPage } from '@/components/ui/spinner';
 
 interface User {
   id: string;
@@ -13,70 +15,33 @@ interface User {
 }
 
 export default function Dashboard() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    totalTraders: 0,
-    totalUsers: 0,
-    activeSessions: 0,
-    totalCredit: 0
-  });
   const router = useRouter();
+  const { data: authData, isLoading: authLoading } = useAuth();
+  const { data: traders = [] } = useTraders();
+  const { data: reports } = useOwnerReports();
 
   useEffect(() => {
-    checkAuth();
-    loadDashboardData();
-  }, []);
-
-  const checkAuth = async () => {
-    try {
-      const response = await fetch('/api/auth/me');
-      const data = await response.json();
-
-      if (data.success) {
-        setUser(data.data.user);
-        if (data.data.user.type === 'owner') {
-          router.push('/dashboard/owner');
-        } else {
-          router.push('/dashboard/trader');
-        }
+    if (authData?.user) {
+      if (authData.user.type === 'owner') {
+        router.push('/dashboard/owner');
       } else {
-        router.push('/login');
+        router.push('/dashboard/trader');
       }
-    } catch (error) {
-      console.error('Auth check failed:', error);
+    } else if (!authLoading) {
       router.push('/login');
-    } finally {
-      setLoading(false);
     }
+  }, [authData, authLoading, router]);
+
+  const stats = {
+    totalTraders: reports?.overview?.totalTraders || traders.length || 0,
+    totalUsers: reports?.overview?.totalUsers || 0,
+    activeSessions: reports?.overview?.activeSessions || 0,
+    totalCredit: reports?.overview?.totalCredit || 0
   };
 
-  const loadDashboardData = async () => {
-    try {
-      // Use the new database API endpoints
-      const [tradersResponse, reportsResponse] = await Promise.all([
-        fetch('/api/traders'),
-        fetch('/api/reports/owner')
-      ]);
-      
-      const tradersData = await tradersResponse.json();
-      const reportsData = await reportsResponse.json();
-      
-      if (tradersData.success && reportsData.success) {
-        const traders = tradersData.data;
-        const reports = reportsData.data;
-        
-        setStats({
-          totalTraders: reports.overview.totalTraders,
-          totalUsers: reports.overview.totalUsers,
-          activeSessions: reports.overview.activeSessions,
-          totalCredit: reports.overview.totalCredit
-        });
-      }
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
-    }
-  };
+  if (authLoading) {
+    return <SpinnerPage text="Loading..." />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">

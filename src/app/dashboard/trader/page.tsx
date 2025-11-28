@@ -1,14 +1,25 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { apiClient } from '@/lib/db-utils-client';
 import { optimisticUpdates, selectiveRefresh } from '@/lib/optimistic-updates';
-import { useTraderStats, useTraderUsers, useTraderSessions, useTraderClients, useTraderTransactions } from '@/hooks/useDashboardData';
+import { 
+  useTrader, 
+  useTraderUsers, 
+  useTraderSessions, 
+  useTraderClients, 
+  useTraderTransactions,
+  useTraderPricing,
+  useCreateVoucher,
+  useUpdatePricing,
+  useAuth,
+  useLogout
+} from '@/lib/usehooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { CreditsChart } from '@/components/credits-chart';
 import { useTheme } from '@/lib/theme-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
 import TraderDiscounts from '@/components/TraderDiscounts';
+import { SpinnerPage, Spinner } from '@/components/ui/spinner';
 import { formatDuration, parseMikroTikTime, formatMikroTikTime } from '@/utils';
 
 interface TraderStats {
@@ -37,11 +48,15 @@ export default function TraderDashboard() {
   const queryClient = useQueryClient();
   
   // React Query hooks for live data
-  const { data: trader, isLoading: traderLoading, error: traderError } = useTraderStats(traderPhone);
+  const { data: trader, isLoading: traderLoading, error: traderError } = useTrader(traderPhone);
   const { data: usersData = [], isLoading: usersLoading, error: usersError } = useTraderUsers(traderPhone);
   const { data: sessionsData = [], isLoading: sessionsLoading, error: sessionsError } = useTraderSessions(traderPhone);
   const { data: clientsData = [], isLoading: clientsLoading, error: clientsError } = useTraderClients(traderPhone);
   const { data: transactionsData = [], isLoading: transactionsLoading, error: transactionsError } = useTraderTransactions(traderPhone);
+  const { data: traderPricingData } = useTraderPricing(traderPhone);
+  const createVoucherMutation = useCreateVoucher();
+  const updatePricingMutation = useUpdatePricing();
+  const logoutMutation = useLogout();
   
   // Ensure data is always an array
   const users = Array.isArray(usersData) ? usersData : [];
@@ -62,11 +77,11 @@ export default function TraderDashboard() {
   
   
   const [vouchers, setVouchers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [newUser, setNewUser] = useState<any>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'clients' | 'reports' | 'transactions'>('overview');
+  
+  const refreshing = createVoucherMutation.isPending;
 
   // Debug logging
 
@@ -81,102 +96,32 @@ export default function TraderDashboard() {
       .reduce((sum, t) => sum + (t.amount || 0), 0)
   };
 
+  const { data: authData } = useAuth();
+
   useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
-    try {
-      const response = await fetch('/api/auth/me');
-      const data = await response.json();
-
-      if (data.success && data.data.user.type === 'trader') {
-        const phone = data.data.user.phone;
-        if (phone) {
-          setTraderPhone(phone);
-          loadTraderData(phone);
-        }
-      } else {
-        // Temporary: Use test phone number for debugging
-        setTraderPhone('22244974444');
-        loadTraderData('22244974444');
-      }
-    } catch (error) {
-      console.error('Auth check failed, using test phone number:', error);
+    if (authData?.user?.type === 'trader' && authData.user.phone) {
+      setTraderPhone(authData.user.phone);
+    } else {
       // Temporary: Use test phone number for debugging
       setTraderPhone('22244974444');
-      loadTraderData('22244974444');
     }
-  };
+  }, [authData]);
 
-  const loadTraderData = async (phone: string) => {
-    setLoading(true);
-    try {
-      const traderData = await apiClient.getTrader(phone);
-      if (!traderData) {
-        alert('Trader not found!');
-        return;
-      }
-
+  useEffect(() => {
+    if (traderPhone && trader) {
       // Set pricing from trader data
-      const basePricing = {
-        hour: traderData.pricing?.hour_price || 1,
-        day: traderData.pricing?.day_price || 4,
-        week: traderData.pricing?.week_price || 20,
-        month: traderData.pricing?.month_price || 60
+      const basePricing = traderPricingData || {
+        hour: trader.hour_price || 1,
+        day: trader.day_price || 4,
+        week: trader.week_price || 20,
+        month: trader.month_price || 60
       };
       setPricing(basePricing);
       
       // Calculate discounted prices
-      await calculateDiscountedPrices(phone, basePricing);
-
-      // Load trader-specific data (this route already filters for the trader)
-      let traderUsers: any[] = [];
-      let traderSessions: any[] = [];
-      
-      try {
-        const [users, sessions] = await Promise.all([
-          apiClient.getTraderUsers(phone),
-          apiClient.getTraderSessions(phone)
-        ]);
-
-        
-        traderUsers = users;
-        traderSessions = sessions;
-      } catch (error) {
-        console.warn('⚠️ Failed to load trader data:', error);
-        
-        // Set empty arrays as fallback
-        traderUsers = [];
-        traderSessions = [];
-      }
-
-      // Load reports for additional data
-      const reports = await apiClient.getTraderReports(phone);
-      if (reports) {
-        setVouchers(reports.vouchers?.distribution || {});
-      }
-    } catch (error) {
-      console.error('Error loading trader data:', error);
-    } finally {
-      setLoading(false);
+      calculateDiscountedPrices(traderPhone, basePricing);
     }
-  };
-
-  const updatePricing = async (newPricing: Pricing) => {
-    if (!trader) return;
-
-    try {
-      const success = await apiClient.updatePricing(trader.phone, newPricing);
-      if (success) {
-        setPricing(newPricing);
-        // Recalculate discounted prices
-        await calculateDiscountedPrices(trader.phone, newPricing);
-      }
-    } catch (error) {
-      console.error('Error updating pricing:', error);
-    }
-  };
+  }, [traderPhone, trader, traderPricingData]);
 
   const calculateDiscountedPrices = async (phone: string, basePricing: Pricing) => {
     try {
@@ -184,12 +129,17 @@ export default function TraderDashboard() {
       
       // Calculate discounted price for each category
       for (const [category, basePrice] of Object.entries(basePricing)) {
-        const priceCalculation = await apiClient.calculateDiscountedPrice(
-          phone, 
-          category as 'hour' | 'day' | 'week' | 'month', 
-          basePrice
-        );
-        discountedPrices[category as keyof Pricing] = priceCalculation.finalPrice;
+        const response = await fetch(`/api/traders/${phone}/discounts/calculate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category, basePrice })
+        });
+        const result = await response.json();
+        if (result.success) {
+          discountedPrices[category as keyof Pricing] = result.data.finalPrice;
+        } else {
+          discountedPrices[category as keyof Pricing] = basePrice;
+        }
       }
       
       setDiscountedPricing(discountedPrices);
@@ -200,21 +150,44 @@ export default function TraderDashboard() {
     }
   };
 
+  const updatePricing = async (newPricing: Pricing) => {
+    if (!trader) return;
+
+    try {
+      await updatePricingMutation.mutateAsync({
+        traderPhone: trader.phone,
+        pricing: newPricing
+      });
+      setPricing(newPricing);
+      // Recalculate discounted prices
+      await calculateDiscountedPrices(trader.phone, newPricing);
+    } catch (error) {
+      console.error('Error updating pricing:', error);
+      alert('Failed to update pricing. Please try again.');
+    }
+  };
+
 
   const createVoucher = async (duration: 'hour' | 'day' | 'week' | 'month', quantity: number = 1) => {
     if (!trader) return;
 
     // Calculate discounted price
     const basePrice = pricing?.[duration] || 1;
-    const priceCalculation = await apiClient.calculateDiscountedPrice(trader.phone, duration, basePrice);
-    const price = priceCalculation.finalPrice * quantity;
-    
-    if (trader.credit < price) {
-      alert('Insufficient credit!');
-      return;
-    }
-
     try {
+      const response = await fetch(`/api/traders/${trader.phone}/discounts/calculate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: duration, basePrice })
+      });
+      const result = await response.json();
+      const finalPrice = result.success ? result.data.finalPrice : basePrice;
+      const price = finalPrice * quantity;
+      
+      if (trader.credit < price) {
+        alert('Insufficient credit!');
+        return;
+      }
+
       // Apply optimistic update immediately
       const mockVoucher = {
         id: `temp_${Date.now()}`,
@@ -230,54 +203,32 @@ export default function TraderDashboard() {
       // Update UI optimistically
       optimisticUpdates.voucherCreated(trader.phone, mockVoucher, trader.credit);
 
-      // Make actual API call
-      const voucher = await apiClient.createVoucher(trader.phone, duration, quantity);
-      if (voucher) {
-        
-        // Show new user details
-        if ((voucher as any).data?.user) {
-          setNewUser((voucher as any).data.user);
-          setShowSuccess(true);
-          // Auto-hide after 5 seconds
-          setTimeout(() => {
-            setShowSuccess(false);
-            setNewUser(null);
-          }, 5000);
-        }
-        
-        setRefreshing(true);
-        
-        // Revalidate all trader-related queries to refresh data
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['trader-stats', trader.phone] }),
-          queryClient.invalidateQueries({ queryKey: ['trader-users', trader.phone] }),
-          queryClient.invalidateQueries({ queryKey: ['trader-sessions', trader.phone] }),
-          queryClient.invalidateQueries({ queryKey: ['owner-reports'] }),
-          queryClient.invalidateQueries({ queryKey: ['all-users'] }),
-          queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
-        ]);
-        
-        setRefreshing(false);
-      } else {
-        console.error('Failed to create voucher');
-        // You can add error handling here
+      // Make actual API call using mutation
+      const voucher = await createVoucherMutation.mutateAsync({
+        traderPhone: trader.phone,
+        duration,
+        quantity
+      });
+      
+      // Show new user details
+      if ((voucher as any)?.user) {
+        setNewUser((voucher as any).user);
+        setShowSuccess(true);
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+          setShowSuccess(false);
+          setNewUser(null);
+        }, 5000);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating voucher:', error);
-      // You can add error handling here
+      alert(error.message || 'Failed to create voucher. Please try again.');
     }
   };
 
   // Show loading state
   if (traderLoading || usersLoading || sessionsLoading || !traderPhone) {
-    return (
-      <div className={`flex items-center justify-center min-h-screen transition-colors ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-        <div className="flex flex-col items-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-          <div className={`text-lg transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Loading dashboard...</div>
-        </div>
-      </div>
-    );
+    return <SpinnerPage text="Loading dashboard..." />;
   }
 
   // Show error state
@@ -298,9 +249,9 @@ export default function TraderDashboard() {
           <div>
             <h1 className={`text-3xl font-bold transition-colors ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Trader Dashboard</h1>
             <div className="flex items-center mt-2">
-              <div className={`w-2 h-2 rounded-full mr-2 ${refreshing ? 'bg-yellow-500 animate-spin' : 'bg-green-500 animate-pulse'}`}></div>
+              <div className={`w-2 h-2 rounded-full mr-2 ${createVoucherMutation.isPending ? 'bg-yellow-500 animate-spin' : 'bg-green-500 animate-pulse'}`}></div>
               <span className={`text-sm transition-colors ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                {refreshing ? 'Refreshing data...' : 'Live data (updates every minute)'}
+                {createVoucherMutation.isPending ? 'Creating voucher...' : 'Live data (updates every minute)'}
               </span>
             </div>
           </div>
@@ -311,8 +262,13 @@ export default function TraderDashboard() {
             </div>
             <button
               onClick={async () => {
-                await fetch('/api/auth/logout', { method: 'POST' });
-                window.location.href = '/login';
+                try {
+                  await logoutMutation.mutateAsync();
+                  window.location.href = '/login';
+                } catch (error) {
+                  console.error('Logout failed:', error);
+                  window.location.href = '/login';
+                }
               }}
               className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
             >

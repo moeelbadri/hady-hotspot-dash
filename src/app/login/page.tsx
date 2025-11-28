@@ -2,44 +2,30 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useLogin } from '@/lib/usehooks';
+import { SpinnerInline } from '@/components/ui/spinner';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
+  const loginMutation = useLogin();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, password }),
-      });
+      const data = await loginMutation.mutateAsync({ username, password });
 
-      const data = await response.json();
-
-      if (data.success) {
-        // Redirect based on user type
-        if (data.data.user.type === 'owner') {
-          router.push('/dashboard/owner');
-        } else {
-          router.push('/dashboard/trader');
-        }
+      if (data.user.type === 'owner') {
+        router.push('/dashboard/owner');
       } else {
-        setError(data.error || 'Login failed');
+        router.push('/dashboard/trader');
       }
-    } catch (error) {
-      setError('Network error. Please try again.');
-    } finally {
-      setLoading(false);
+    } catch (error: any) {
+      setError(error.message || 'Login failed');
     }
   };
 
@@ -100,10 +86,17 @@ export default function LoginPage() {
             <div>
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={loginMutation.isPending}
+                className="w-full flex justify-center items-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? 'Signing in...' : 'Sign in'}
+                {loginMutation.isPending ? (
+                  <>
+                    <SpinnerInline size="sm" className="mr-2" />
+                    Signing in...
+                  </>
+                ) : (
+                  'Sign in'
+                )}
               </button>
             </div>
           </form>
